@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "users": {
+      "title": "users",
+      "description": "Perfis dos alunos cadastrados na plataforma",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "enrolledCourses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "accessEnabled": { "type": "boolean" }
+      },
+      "required": ["uid", "email"]
+    },
+    "courses": {
+      "title": "courses",
+      "description": "Cursos disponíveis",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "totalLessons": { "type": "number" }
+      },
+      "required": ["title"]
+    },
+    "modules": {
+      "title": "modules",
+      "description": "Módulos do curso",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "title": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["courseId", "title", "order"]
+    },
+    "lessons": {
+      "title": "lessons",
+      "description": "Aulas do curso com links do Google Drive e Google Forms",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "moduleId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "formUrl": { "type": "string" },
+        "order": { "type": "number" },
+        "duration": { "type": "string" }
+      },
+      "required": ["courseId", "moduleId", "title", "order"]
+    },
+    "progress": {
+      "title": "progress",
+      "description": "Progresso das aulas concluídas pelo aluno",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "completedLessons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "lastLessonId": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "courseId", "completedLessons"]
+    }
+  }
+}

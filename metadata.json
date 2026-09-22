@@ -1,0 +1,6 @@
+{
+  "name": "VL Automação - Plataforma EAD",
+  "description": "Plataforma de ensino online para cursos de automação industrial, programação de CLPs, supervisórios e inversores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
