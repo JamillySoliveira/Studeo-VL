@@ -1,12 +1,34 @@
 "use client";
 
+/**
+ * =======================================================================
+ * PAINEL ADMINISTRATIVO (ADMIN VIEW) - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Módulo exclusivo para gestão da plataforma pelos administradores:
+ * 1. Gestão de Cursos e Aulas:
+ *    - Cadastro de novas aulas, edição de títulos, durações, URLs de vídeo (YouTube/Drive) e links de Google Forms.
+ *    - Reordenação da grade de aulas e exclusão.
+ * 2. Gestão de Alunos e Acessos:
+ *    - Consulta de alunos registrados no Firestore (excluindo administradores).
+ *    - Ativação ou suspensão de acesso do aluno (`accessEnabled`).
+ *    - Liberação ou revogação de cursos específicos por aluno (`enrolledCourses`).
+ * 3. Gestão de Certificados por Curso:
+ *    - Upload do arquivo oficial do certificado (PDF) com persistência no Firestore.
+ * 4. Gestão de Avisos:
+ *    - Envio de comunicados aos alunos segmentados por curso.
+ *
+ * NOTA SOBRE WHATSAPP:
+ * O número oficial de WhatsApp da VL Automações é configurado diretamente no código
+ * em `lib/constants.ts` (WHATSAPP_NUMBER), garantindo centralização e segurança.
+ */
+
 import React, { useState, useEffect, useTransition, useRef } from "react";
 import {
   LayoutDashboard,
   BookOpen,
   Users,
   Bell,
-  Settings,
   Plus,
   Trash2,
   Edit3,
@@ -20,9 +42,7 @@ import {
   Video,
   FileSpreadsheet,
   Clock,
-  MessageCircle,
   HelpCircle,
-  Check,
   Award,
   Upload,
   FileText,
@@ -44,13 +64,10 @@ import {
 } from "@/lib/courseService";
 import { AVAILABLE_COURSES, getVideoEmbedUrl } from "@/lib/courseData";
 import {
-  getSavedWhatsAppNumber,
-  saveCustomWhatsAppNumber,
   getStoredNotices,
   saveStoredNotice,
   deleteStoredNotice,
   Notice,
-  getCourseWhatsAppUrl,
 } from "@/lib/constants";
 
 interface AdminViewProps {
@@ -59,8 +76,8 @@ interface AdminViewProps {
   onSelectCourseId?: (courseId: string) => void;
 }
 
-// 5 Abas solicitadas no Painel Administrativo: Dashboard, Cursos, Alunos, Avisos, Configurações
-type AdminTab = "dashboard" | "courses" | "students" | "notices" | "settings";
+// 4 Abas oficiais do Painel Administrativo: Dashboard, Cursos, Alunos e Avisos
+type AdminTab = "dashboard" | "courses" | "students" | "notices";
 
 /**
  * Subcomponente isolado para o Formulário de Cadastro e Edição Direta de Aula (sem módulos)
@@ -328,12 +345,6 @@ export function AdminView({
   const [newNoticeMessage, setNewNoticeMessage] = useState("");
   const [newNoticeCourseId, setNewNoticeCourseId] = useState<string>("rockwell-basico");
 
-  // Estados de configurações
-  const [customWhatsAppNumber, setCustomWhatsAppNumber] = useState<string>(() =>
-    getSavedWhatsAppNumber()
-  );
-  const [settingsSavedFeedback, setSettingsSavedFeedback] = useState(false);
-
   const [, startTransition] = useTransition();
 
   // Recarrega os dados do curso quando o selectedCourseId mudar
@@ -364,8 +375,11 @@ export function AdminView({
         startTransition(() => {
           setUsers(data);
           const drafts: Record<string, string[]> = {};
+          // Registra rascunho apenas para estudantes (excluindo administradores)
           data.forEach((u) => {
-            drafts[u.uid] = u.enrolledCourses || ["rockwell-basico"];
+            if (u.role !== "admin") {
+              drafts[u.uid] = u.enrolledCourses || ["rockwell-basico"];
+            }
           });
           setEnrolledDrafts(drafts);
           setLoadingUsers(false);
@@ -675,30 +689,30 @@ export function AdminView({
     setNoticesList(getStoredNotices());
   };
 
-  // Salva número do WhatsApp nas Configurações
-  const handleSaveWhatsAppConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveCustomWhatsAppNumber(customWhatsAppNumber);
-    setSettingsSavedFeedback(true);
-    setTimeout(() => setSettingsSavedFeedback(false), 3000);
-  };
+  // =======================================================================
+  // SEPARAÇÃO: ADMINISTRADORES NÃO SÃO ALUNOS
+  // =======================================================================
+  // Usuários com role === "admin" são administradores da plataforma e NÃO alunos.
+  // Eles não aparecem na listagem de alunos nem são somados no total ou métricas de alunos.
+  const students = users.filter((u) => u.role !== "admin");
 
-  // Estatísticas para o Dashboard do Admin
-  const totalStudents = users.length;
-  const activeStudents = users.filter((u) => u.accessEnabled !== false).length;
-  const blockedStudents = users.filter((u) => u.accessEnabled === false).length;
+  // Métricas para o Dashboard do Admin calculadas exclusivamente com alunos
+  const totalStudents = students.length;
+  const activeStudents = students.filter((u) => u.accessEnabled !== false).length;
+  const blockedStudents = students.filter((u) => u.accessEnabled === false).length;
 
-  const countBasico = users.filter((u) =>
+  const countBasico = students.filter((u) =>
     (u.enrolledCourses || []).includes("rockwell-basico")
   ).length;
-  const countIntermediario = users.filter((u) =>
+  const countIntermediario = students.filter((u) =>
     (u.enrolledCourses || []).includes("rockwell-intermediario")
   ).length;
-  const countAvancado = users.filter((u) =>
+  const countAvancado = students.filter((u) =>
     (u.enrolledCourses || []).includes("rockwell-avancado")
   ).length;
 
-  const filteredUsers = users.filter(
+  // Lista de alunos com filtro de busca (excluindo qualquer administrador)
+  const filteredUsers = students.filter(
     (u) =>
       u.email?.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.displayName?.toLowerCase().includes(userSearch.toLowerCase())
@@ -720,7 +734,7 @@ export function AdminView({
           </p>
         </div>
 
-        {/* 5 Abas de Navegação Solicitadas */}
+        {/* 4 Abas de Navegação: Dashboard, Cursos, Alunos, Avisos */}
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200">
           <button
             type="button"
@@ -772,19 +786,6 @@ export function AdminView({
           >
             <Bell className="w-3.5 h-3.5 text-[#ea580c]" />
             <span>Avisos</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAdminTab("settings")}
-            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              adminTab === "settings"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5 text-[#ea580c]" />
-            <span>Configurações</span>
           </button>
         </div>
       </div>
@@ -1351,7 +1352,6 @@ export function AdminView({
             <div className="space-y-4">
               {filteredUsers.map((u) => {
                 const isBlocked = u.accessEnabled === false;
-                const isUserAdmin = u.role === "admin";
                 const isUpdatingAccess = updatingAccessUserId === u.uid;
                 const isSavingEnrolled = savingEnrolledUserId === u.uid;
 
@@ -1362,18 +1362,13 @@ export function AdminView({
                     key={u.uid}
                     className="p-4 sm:p-5 rounded-2xl border border-slate-200/90 bg-slate-50/50 space-y-4 shadow-xs"
                   >
-                    {/* Linha 1: Nome, E-mail e Status (accessEnabled) */}
+                    {/* Linha 1: Nome, E-mail e Status do Aluno (accessEnabled) */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/70 pb-3">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-slate-900">
                             {u.displayName || "Aluno"}
                           </span>
-                          {isUserAdmin && (
-                            <span className="text-[10px] font-bold text-[#ea580c] bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md">
-                              Admin
-                            </span>
-                          )}
                         </div>
                         <span className="text-xs text-slate-500 block">
                           {u.email}
@@ -1392,24 +1387,22 @@ export function AdminView({
                           Status: {isBlocked ? "Bloqueado" : "Ativo"}
                         </span>
 
-                        {!isUserAdmin && (
-                          <button
-                            type="button"
-                            disabled={isUpdatingAccess}
-                            onClick={() => handleToggleAccessEnabled(u)}
-                            className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 ${
-                              isBlocked
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"
-                                : "bg-white hover:bg-red-50 text-slate-700 hover:text-red-700 border-slate-200"
-                            }`}
-                          >
-                            {isUpdatingAccess
-                              ? "Salvando..."
-                              : isBlocked
-                              ? "Liberar Acesso"
-                              : "Bloquear"}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          disabled={isUpdatingAccess}
+                          onClick={() => handleToggleAccessEnabled(u)}
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 ${
+                            isBlocked
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"
+                              : "bg-white hover:bg-red-50 text-slate-700 hover:text-red-700 border-slate-200"
+                          }`}
+                        >
+                          {isUpdatingAccess
+                            ? "Salvando..."
+                            : isBlocked
+                            ? "Liberar Acesso"
+                            : "Bloquear"}
+                        </button>
                       </div>
                     </div>
 
@@ -1598,119 +1591,6 @@ export function AdminView({
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================
-          5. ABA: CONFIGURAÇÕES DA PLATAFORMA
-          ============================================================ */}
-      {adminTab === "settings" && (
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
-              Configurações da Plataforma
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Ajuste o número de atendimento do WhatsApp e visualize o fluxo de compra oficial.
-            </p>
-          </div>
-
-          {settingsSavedFeedback && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-600" />
-              <span>Configurações do WhatsApp salvas com sucesso!</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSaveWhatsAppConfig} className="max-w-md space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-900 mb-1">
-                Número do WhatsApp Oficial para Vendas / Acessos:
-              </label>
-              <input
-                type="text"
-                value={customWhatsAppNumber}
-                onChange={(e) => setCustomWhatsAppNumber(e.target.value)}
-                placeholder="Ex: 5511999999999"
-                required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Informe no formato internacional DDI + DDD + Número sem espaços ou traços (Ex: 5511999999999).
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              className="py-2.5 px-5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>Salvar Número do WhatsApp</span>
-            </button>
-          </form>
-
-          {/* Pré-visualização dos Links do WhatsApp para cada Curso */}
-          <div className="border-t border-slate-100 pt-5 space-y-3">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Links de Compra Automáticos Gerados para o WhatsApp:
-            </h3>
-
-            <div className="space-y-2 text-xs">
-              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <span className="font-bold text-slate-900 block">Básico:</span>
-                  <span className="text-slate-500 text-[11px]">
-                    &quot;Olá! Gostaria de obter acesso ao curso Programação Rockwell - Básico.&quot;
-                  </span>
-                </div>
-                <a
-                  href={getCourseWhatsAppUrl("rockwell-basico")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline shrink-0"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Testar Link</span>
-                </a>
-              </div>
-
-              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <span className="font-bold text-slate-900 block">Intermediário:</span>
-                  <span className="text-slate-500 text-[11px]">
-                    &quot;Olá! Gostaria de obter acesso ao curso Programação Rockwell - Intermediário.&quot;
-                  </span>
-                </div>
-                <a
-                  href={getCourseWhatsAppUrl("rockwell-intermediario")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline shrink-0"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Testar Link</span>
-                </a>
-              </div>
-
-              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <span className="font-bold text-slate-900 block">Avançado:</span>
-                  <span className="text-slate-500 text-[11px]">
-                    &quot;Olá! Gostaria de obter acesso ao curso Programação Rockwell - Avançado.&quot;
-                  </span>
-                </div>
-                <a
-                  href={getCourseWhatsAppUrl("rockwell-avancado")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline shrink-0"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Testar Link</span>
-                </a>
-              </div>
-            </div>
           </div>
         </div>
       )}

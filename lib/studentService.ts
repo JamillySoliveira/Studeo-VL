@@ -1,13 +1,17 @@
 /**
- * Serviço de Gerenciamento do Aluno e Progresso no Cloud Firestore
+ * =======================================================================
+ * SERVIÇO DO ALUNO E PROGRESSO NO CLOUD FIRESTORE - VL AUTOMAÇÕES
+ * =======================================================================
  *
- * Este arquivo concentra as operações que conversam com o banco de dados do Firebase:
- * 1. Salvar ou sincronizar o perfil do aluno na coleção "users"
- * 2. Buscar o progresso das aulas concluídas na coleção "progress" (separado por courseId)
- * 3. Alternar a conclusão de uma aula (marcar / desmarcar como concluída)
+ * Este arquivo concentra todas as operações de banco de dados relacionadas ao aluno:
+ * 1. Sincronização do perfil do aluno na coleção "users"
+ * 2. Consulta do progresso (aulas e formulários concluídos) na coleção "progress"
+ * 3. Alternância do status de conclusão das aulas e das atividades do Google Forms
+ * 4. Verificação das regras de conclusão do curso (100% aulas + 100% atividades)
+ * 5. Isolamento do progresso por curso (um curso nunca interfere no outro)
  *
- * Cada função possui tratamento de erros e fallback para localStorage,
- * garantindo estabilidade e compatibilidade com dados existentes.
+ * Para garantir estabilidade e carregamento instantâneo, todas as funções
+ * possuem fallback automático com o localStorage do navegador.
  */
 
 import {
@@ -20,7 +24,13 @@ import { UserProfile, UserProgress } from "./types";
 import { INITIAL_COURSE_ID } from "./courseData";
 
 /**
- * Salva ou atualiza os dados básicos do usuário no Firestore
+ * Salva ou atualiza os dados básicos do usuário no Firestore.
+ * 
+ * Chamado assim que o aluno faz login (via Google ou e-mail/senha).
+ * Se o usuário ainda não existir no Firestore, cria um registro inicial com:
+ * - Papel padrão: "student" (ou "admin" para a conta mestre oficial)
+ * - Acesso ativo (accessEnabled: true)
+ * - Matrícula no curso inicial ("rockwell-basico")
  */
 export async function syncUserProfile(user: {
   uid: string;
@@ -33,7 +43,7 @@ export async function syncUserProfile(user: {
     const existing = await getDoc(userRef);
 
     if (!existing.exists()) {
-      // Administradores são identificados pelo role no Firestore ou pela conta mestre oficial
+      // Identifica se o e-mail pertence à conta oficial de administração
       const isAdminEmail =
         user.email === "adm.vlautomacao@gmail.com";
 
@@ -43,8 +53,8 @@ export async function syncUserProfile(user: {
         displayName: user.displayName || user.email?.split("@")[0] || "Aluno",
         photoURL: user.photoURL || null,
         role: isAdminEmail ? "admin" : "student",
-        accessEnabled: true, // Acesso liberado à plataforma
-        enrolledCourses: [INITIAL_COURSE_ID], // Curso inicial padrão: rockwell-basico
+        accessEnabled: true,
+        enrolledCourses: [INITIAL_COURSE_ID], // Libera o curso inicial padrão
         createdAt: new Date().toISOString(),
       };
       await setDoc(userRef, newProfile);
@@ -55,8 +65,14 @@ export async function syncUserProfile(user: {
 }
 
 /**
- * Busca o progresso do aluno para determinado curso (courseId), incluindo aulas e formulários.
- * Mantém compatibilidade com o ID antigo 'rockwell-controle-analogico-supervisorio'.
+ * Busca o progresso do aluno para um curso específico no Firestore.
+ * 
+ * O documento é armazenado na coleção "progress" com o ID: "{userId}_{courseId}".
+ * Se o aluno estiver offline ou houver falha de rede, lê os dados do cache local (localStorage).
+ * 
+ * @param userId ID único do aluno no Firebase Auth
+ * @param courseId ID do curso selecionado (ex: "rockwell-basico")
+ * @returns Objeto com as aulas concluídas, formulários respondidos e status geral
  */
 export async function getUserProgress(
   userId: string,
@@ -65,12 +81,12 @@ export async function getUserProgress(
   const fallbackKey = `vl_progress_${userId}_${courseId}`;
   const fallbackFormsKey = `vl_progress_forms_${userId}_${courseId}`;
   
-  // Tenta ler do Firestore
+  // 1. Tenta ler o documento oficial salvo no Cloud Firestore
   try {
     const progressDocRef = doc(db, "progress", `${userId}_${courseId}`);
     let snapshot = await getDoc(progressDocRef);
 
-    // Compatibilidade com dados legados para o curso Básico
+    // Compatibilidade com dados legados para alunos que já utilizavam a plataforma
     if (!snapshot.exists() && courseId === "rockwell-basico") {
       const legacyDocRef = doc(db, "progress", `${userId}_rockwell-controle-analogico-supervisorio`);
       const legacySnapshot = await getDoc(legacyDocRef);
@@ -81,7 +97,7 @@ export async function getUserProgress(
 
     if (snapshot.exists()) {
       const data = snapshot.data() as UserProgress;
-      // Sincroniza cópia local
+      // Salva uma cópia atualizada no localStorage para acesso offline imediato
       if (typeof window !== "undefined") {
         localStorage.setItem(fallbackKey, JSON.stringify(data.completedLessons || []));
         localStorage.setItem(fallbackFormsKey, JSON.stringify(data.completedForms || []));
@@ -101,7 +117,7 @@ export async function getUserProgress(
     console.warn("Aviso ao buscar progresso do Firestore. Usando cache local:", error);
   }
 
-  // Se falhar ou documento não existir ainda, busca do localStorage
+  // 2. Fallback: se não encontrar no Firestore ou houver erro, carrega do localStorage
   let localCompleted: string[] = [];
   let localFormsCompleted: string[] = [];
   if (typeof window !== "undefined") {
@@ -119,7 +135,7 @@ export async function getUserProgress(
         localFormsCompleted = JSON.parse(savedForms);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao ler progresso do cache local:", e);
     }
   }
 
@@ -133,9 +149,9 @@ export async function getUserProgress(
 }
 
 /**
- * Avalia se o curso preenche todos os requisitos para ser marcado como "Concluído":
- * - 100% das aulas concluídas (completedLessonsCount === totalLessonsCount && totalLessonsCount > 0)
- * - 100% dos formulários obrigatórios concluídos (completedFormsCount === totalFormsCount)
+ * Avalia se o aluno cumpriu todos os critérios para a conclusão oficial do curso:
+ * - 100% das aulas assistidas e marcadas como concluídas
+ * - 100% dos formulários obrigatórios do Google Forms respondidos e confirmados
  */
 export function checkCourseCompletionRequirements(
   completedLessonsCount: number,
@@ -145,14 +161,18 @@ export function checkCourseCompletionRequirements(
 ): boolean {
   if (totalLessonsCount <= 0) return false;
   const lessonsDone = completedLessonsCount >= totalLessonsCount;
-  // Se o curso tem formulários obrigatórios cadastrados, todos devem estar concluídos
+  // Se houver formulários cadastrados nas aulas do curso, todos devem estar concluídos
   const formsDone = totalFormsCount > 0 ? completedFormsCount >= totalFormsCount : true;
   return lessonsDone && formsDone;
 }
 
 /**
- * Marca ou desmarca uma aula como concluída e salva no Firestore,
- * avaliando e atualizando também o status de conclusão do curso.
+ * Alterna o status de conclusão de uma aula (marcar / desmarcar).
+ * 
+ * Salva a alteração imediatamente no localStorage (para a interface responder sem travamentos)
+ * e envia para o Cloud Firestore, recalculando se o curso atingiu 100% de conclusão.
+ * 
+ * @returns Objeto com a lista atualizada de aulas concluídas e o booleano de conclusão do curso
  */
 export async function toggleLessonProgress(
   userId: string,
@@ -168,7 +188,7 @@ export async function toggleLessonProgress(
     ? currentCompleted.filter((id) => id !== lessonId)
     : [...currentCompleted, lessonId];
 
-  // Avalia se atingiu 100% de aulas e 100% de formulários
+  // Avalia se o aluno completou todas as aulas e atividades após esta alteração
   const isCourseCompleted = checkCourseCompletionRequirements(
     updatedList.length,
     totalLessonsCount,
@@ -190,18 +210,18 @@ export async function toggleLessonProgress(
     payload.completedAt = new Date().toISOString();
   }
 
-  // Salva no localStorage imediatamente para resposta instantânea
+  // Grava no localStorage para feedback visual instantâneo
   const fallbackKey = `vl_progress_${userId}_${courseId}`;
   if (typeof window !== "undefined") {
     localStorage.setItem(fallbackKey, JSON.stringify(updatedList));
   }
 
-  // Salva no Firestore
+  // Grava no Cloud Firestore
   try {
     const progressDocRef = doc(db, "progress", `${userId}_${courseId}`);
     await setDoc(progressDocRef, payload, { merge: true });
 
-    // Se for o curso básico, sincroniza também com o ID legado para total retrocompatibilidade
+    // Se for o curso básico, mantém sincronia com o ID legado
     if (courseId === "rockwell-basico") {
       const legacyDocRef = doc(
         db,
@@ -218,15 +238,17 @@ export async function toggleLessonProgress(
       );
     }
   } catch (error) {
-    console.warn("Aviso: Progresso de aula salvo localmente, mas erro ao sincronizar no Firestore:", error);
+    console.warn("Aviso: Progresso salvo localmente, mas erro ao sincronizar no Firestore:", error);
   }
 
   return { updatedLessons: updatedList, isCourseCompleted };
 }
 
 /**
- * Marca ou desmarca o formulário Google Forms de uma aula como respondido/concluído
- * e salva no Firestore, avaliando e atualizando também o status de conclusão do curso.
+ * Alterna a conclusão do formulário Google Forms de uma aula.
+ * 
+ * Após preencher o formulário, o aluno clica em "Marcar atividade como concluída".
+ * A função registra a atividade no Firestore e no cache local.
  */
 export async function toggleFormProgress(
   userId: string,
@@ -263,7 +285,7 @@ export async function toggleFormProgress(
     payload.completedAt = new Date().toISOString();
   }
 
-  // Salva no localStorage imediatamente
+  // Salva no localStorage
   const fallbackFormsKey = `vl_progress_forms_${userId}_${courseId}`;
   if (typeof window !== "undefined") {
     localStorage.setItem(fallbackFormsKey, JSON.stringify(updatedFormsList));
@@ -297,7 +319,10 @@ export async function toggleFormProgress(
 }
 
 /**
- * Carrega os dados atualizados do perfil e das permissões do usuário
+ * Busca o perfil cadastrado do usuário no Firestore para verificar permissões:
+ * - Se a conta está ativa (accessEnabled)
+ * - Quais cursos estão liberados para o aluno (enrolledCourses)
+ * - Papel no sistema (student ou admin)
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
@@ -313,12 +338,12 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 }
 
 /**
- * Carrega o mapa de progresso (aulas concluídas) de múltiplos cursos de forma independente,
- * garantindo que o progresso nunca seja misturado entre cursos.
+ * Carrega o mapa de progresso (aulas concluídas) de múltiplos cursos de forma independente.
+ * Garante que o progresso de um curso nunca seja misturado com outro.
  * 
  * @param userId ID do aluno
- * @param courseIds Lista de IDs de cursos (ex: ["rockwell-basico", "rockwell-intermediario", "rockwell-avancado"])
- * @returns Objeto indexado por courseId contendo o array de IDs de aulas concluídas daquele curso
+ * @param courseIds Lista de IDs de cursos
+ * @returns Dicionário contendo { [courseId]: string[] } com os IDs das aulas concluídas
  */
 export async function getUserCoursesProgressMap(
   userId: string,
@@ -341,31 +366,8 @@ export async function getUserCoursesProgressMap(
 }
 
 /**
- * Carrega o mapa de formulários respondidos de múltiplos cursos de forma independente.
- */
-export async function getUserCoursesFormsProgressMap(
-  userId: string,
-  courseIds: string[]
-): Promise<Record<string, string[]>> {
-  const formsMap: Record<string, string[]> = {};
-
-  await Promise.all(
-    courseIds.map(async (cId) => {
-      try {
-        const progress = await getUserProgress(userId, cId);
-        formsMap[cId] = progress.completedForms || [];
-      } catch {
-        formsMap[cId] = [];
-      }
-    })
-  );
-
-  return formsMap;
-}
-
-/**
- * Carrega o progresso completo e detalhado (aulas, formulários, status de conclusão)
- * para uma lista de cursos.
+ * Carrega o progresso completo e detalhado (aulas, formulários e status de conclusão)
+ * para exibição detalhada na aba de Progresso e Certificados.
  */
 export async function getUserCoursesDetailedProgressMap(
   userId: string,

@@ -7,7 +7,11 @@ import {
   Lock,
   CheckCircle2,
   MessageCircle,
-  Lightbulb,
+  BookOpen,
+  Award,
+  Bell,
+  HelpCircle,
+  CheckCheck,
 } from "lucide-react";
 import { Course, Lesson, UserProfile } from "@/lib/types";
 import { checkUserCourseAccess, getUserAccessibleCourseIds } from "@/lib/courseService";
@@ -25,17 +29,17 @@ interface DashboardViewProps {
   onGoToCourse: (courseId?: string) => void;
   onGoToProgress?: () => void;
   onGoToHelp?: () => void;
+  onGoToCertificates?: () => void;
+  onGoToNotices?: () => void;
 }
 
 /**
- * Dashboard Principal do Aluno - StudeoVL (VL Automações)
+ * Dashboard Principal do Aluno - VL AUTOMAÇÕES
  *
- * Estrutura visual:
- * 1. Topo: Olá, [Nome do aluno] 👋 + Continue seu aprendizado
- * 2. Curso em destaque (curso ativo com barra de progresso e botão de continuar de onde parou)
- * 3. Seção "MEUS CURSOS": os 3 cursos oficiais (Básico, Intermediário e Avançado)
- *    - Cursos com acesso: ✓ Acesso liberado + Progresso individual + [ Acessar curso → ]
- *    - Cursos sem acesso: 🔒 Acesso não liberado + Descrição + [ OBTER ACESSO AO CURSO ] (WhatsApp)
+ * Estrutura moderna, limpa e funcional:
+ * 1. Cabeçalho de Boas-vindas personalizado
+ * 2. Card de destaque "Continue de onde parou" + Acesso Rápido
+ * 3. Grade dos cursos da plataforma (Meus Cursos com acessos e solicitações via WhatsApp)
  */
 export function DashboardView({
   user,
@@ -47,8 +51,10 @@ export function DashboardView({
   onStartLesson,
   onGoToCourse,
   onGoToHelp,
+  onGoToCertificates,
+  onGoToNotices,
 }: DashboardViewProps) {
-  // Nome amigável do aluno para saudação
+  // Nome amigável do aluno para saudação dinâmica
   const displayName =
     user?.displayName ||
     (user?.email ? user.email.split("@")[0] : "Aluno");
@@ -56,13 +62,13 @@ export function DashboardView({
   // Lista dos IDs de cursos aos quais o aluno possui acesso oficial (enrolledCourses)
   const accessibleCourseIds = getUserAccessibleCourseIds(user);
 
-  // Identifica o curso em destaque atual (deve ser um curso com acesso)
+  // Identifica o curso em andamento (deve ser um curso com acesso)
   const highlightedCourse =
     accessibleCourseIds.includes(course.id)
       ? course
       : allCourses.find((c) => accessibleCourseIds.includes(c.id)) || null;
 
-  // Lista de aulas concluídas do curso em destaque
+  // Lista de aulas concluídas do curso em andamento
   const highlightedCompleted = highlightedCourse
     ? coursesProgressMap[highlightedCourse.id] ||
       (highlightedCourse.id === course.id ? completedLessons : [])
@@ -76,12 +82,16 @@ export function DashboardView({
       ? Math.round((highlightedCount / highlightedTotal) * 100)
       : 0;
 
-  // Próxima aula não concluída do curso em destaque
+  // Próxima aula não concluída do curso
   const nextIncompleteLesson =
     highlightedLessons.find((l) => !highlightedCompleted.includes(l.id)) ||
-    highlightedLessons[0];
+    null;
 
-  // Ação ao clicar em "Acessar curso" em um card liberado
+  // Verifica se todas as aulas do curso já foram concluídas
+  const isCourseAllCompleted =
+    highlightedTotal > 0 && highlightedCount >= highlightedTotal;
+
+  // Ação ao clicar em "Acessar curso"
   const handleOpenCourse = (targetCourseId: string) => {
     if (onSelectCourse) {
       onSelectCourse(targetCourseId);
@@ -89,7 +99,7 @@ export function DashboardView({
     onGoToCourse(targetCourseId);
   };
 
-  // Ação ao clicar em "Continuar curso" no destaque
+  // Ação ao clicar em "Continuar estudando"
   const handleContinueCourse = () => {
     if (!highlightedCourse) return;
     if (onSelectCourse && highlightedCourse.id !== course.id) {
@@ -97,124 +107,277 @@ export function DashboardView({
     }
     if (nextIncompleteLesson) {
       onStartLesson(nextIncompleteLesson);
+    } else if (highlightedLessons.length > 0) {
+      onStartLesson(highlightedLessons[0]);
     } else {
       onGoToCourse(highlightedCourse.id);
     }
   };
 
+  // Rolagem suave até a grade de cursos
+  const handleScrollToCourses = () => {
+    const el = document.getElementById("section-meus-cursos");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    } else {
+      onGoToCourse();
+    }
+  };
+
   return (
-    <div id="vl-dashboard-view" className="max-w-4xl mx-auto py-3 sm:py-6 space-y-8">
-      {/* ================= 1. SAUDAÇÃO INICIAL ================= */}
-      <div className="space-y-1">
+    <div id="vl-dashboard-view" className="max-w-5xl mx-auto py-3 sm:py-6 space-y-6 sm:space-y-8">
+      {/* ================= 1. CABEÇALHO DE BOAS-VINDAS ================= */}
+      <section className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-2">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Olá, {displayName} 👋
         </h1>
-        <p className="text-sm sm:text-base text-slate-500 font-medium">
-          Continue seu aprendizado
+        <p className="text-sm sm:text-base text-slate-700 font-semibold leading-relaxed">
+          Continue sua jornada de aprendizado em automação industrial.
         </p>
-      </div>
+        <p className="text-xs sm:text-sm text-slate-500 font-normal leading-relaxed max-w-2xl">
+          Aprenda no seu ritmo, acompanhe seu progresso e desenvolva novas habilidades profissionais.
+        </p>
+      </section>
 
-      {/* ================= 2. CURSO EM DESTAQUE ================= */}
-      {highlightedCourse ? (
+      {/* ================= 2. BLOCO SUPERIOR: CONTINUIDADE & ACESSO RÁPIDO ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* CARD DE CONTINUIDADE DOS ESTUDOS (Destaque Principal) */}
         <section
-          id="vl-highlighted-course-card"
-          aria-label="Curso em andamento"
-          className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs space-y-5"
+          aria-label="Continue de onde parou"
+          className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs flex flex-col justify-between space-y-5"
         >
-          {/* Cabeçalho do Destaque */}
-          <div className="space-y-1">
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              {highlightedCourse.title}
-            </h2>
+          {highlightedCourse ? (
+            <>
+              <div className="space-y-4">
+                {/* Título da Seção e Curso */}
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-[#ea580c] uppercase tracking-wider block">
+                    Continue de onde parou
+                  </span>
+                  <h2 className="text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {highlightedCourse.title}
+                  </h2>
+                </div>
 
-            <p className="text-xs sm:text-sm text-slate-500">
-              {highlightedCount > 0
-                ? "Continue de onde você parou"
-                : "Comece seu aprendizado"}
-            </p>
-          </div>
+                {/* Próxima Aula Não Concluída */}
+                {nextIncompleteLesson ? (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Próxima aula:
+                    </span>
+                    <p className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+                      {nextIncompleteLesson.title}
+                    </p>
+                    {nextIncompleteLesson.duration && (
+                      <span className="text-xs text-slate-500 block">
+                        Duração: {nextIncompleteLesson.duration}
+                      </span>
+                    )}
+                  </div>
+                ) : isCourseAllCompleted ? (
+                  <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl p-4 flex items-center gap-3 text-emerald-800">
+                    <CheckCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold">Parabéns! Todas as aulas foram concluídas.</p>
+                      <p className="text-xs text-emerald-700">Você já completou 100% da grade deste curso.</p>
+                    </div>
+                  </div>
+                ) : null}
 
-          {/* Barra de Progresso Horizontal */}
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="font-semibold text-slate-700">
-                {highlightedCount} de {highlightedTotal} aulas concluídas
-              </span>
-              <span className="font-bold text-[#ea580c]">
-                {highlightedPercent}%
-              </span>
+                {/* Informações de Progresso */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="font-semibold text-slate-700">
+                      {highlightedCount} de {highlightedTotal} aulas concluídas
+                    </span>
+                    <span className="font-extrabold text-[#ea580c]">
+                      {highlightedPercent}% concluído
+                    </span>
+                  </div>
+
+                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#ea580c] rounded-full transition-all duration-500"
+                      style={{ width: `${highlightedPercent}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleContinueCourse}
+                  className="py-3 px-6 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Continuar estudando</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenCourse(highlightedCourse.id)}
+                  className="py-3 px-5 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>Ver todas as aulas</span>
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                </button>
+              </div>
+            </>
+          ) : (
+            /* Caso em que o aluno ainda não possui nenhum curso liberado */
+            <div className="space-y-4 my-auto">
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Área do Aluno
+                </span>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                  Comece seu primeiro curso
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-lg">
+                  Explore nossos cursos profissionais de automação industrial Rockwell e solicite seu acesso para começar a estudar agora mesmo.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleScrollToCourses}
+                  className="py-3 px-6 bg-slate-900 hover:bg-black text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>Ver meus cursos</span>
+                </button>
+
+                <a
+                  href={getCourseWhatsAppUrl("rockwell-basico")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 py-3 px-5 bg-[#059669] hover:bg-[#047857] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Falar no WhatsApp</span>
+                </a>
+              </div>
             </div>
-
-            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#ea580c] rounded-full transition-all duration-500"
-                style={{ width: `${highlightedPercent}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Botão de Ação do Destaque */}
-          <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <button
-              id="btn-continue-highlighted-course"
-              type="button"
-              onClick={handleContinueCourse}
-              className="py-3 px-6 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>
-                {highlightedCount > 0 ? "Continuar curso →" : "Acessar curso →"}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleOpenCourse(highlightedCourse.id)}
-              className="py-3 px-5 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>Ver todas as aulas</span>
-              <ArrowRight className="w-4 h-4 text-slate-400" />
-            </button>
-          </div>
+          )}
         </section>
-      ) : (
-        /* Caso especial: aluno com cadastro mas sem cursos liberados em enrolledCourses */
-        <section className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 shadow-xs space-y-4">
+
+        {/* 6. ACESSO RÁPIDO */}
+        <section
+          aria-label="Acesso rápido"
+          className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs flex flex-col justify-between space-y-4"
+        >
           <div className="space-y-1">
-            <h2 className="text-lg font-bold text-slate-900">
-              Comece seu aprendizado
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Você ainda não possui nenhum curso liberado. Escolha um dos cursos abaixo e solicite seu acesso via WhatsApp.
+            <h3 className="text-base font-bold text-slate-900">
+              Acesso rápido
+            </h3>
+            <p className="text-xs text-slate-500">
+              Atalhos úteis para o seu dia a dia
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <a
-              href={getCourseWhatsAppUrl("rockwell-basico")}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 py-2.5 px-5 bg-[#059669] hover:bg-[#047857] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" />
-              <span>Falar com instrutor no WhatsApp</span>
-            </a>
 
+          <div className="space-y-2.5">
+            {/* Atalho Meus Cursos */}
+            <button
+              type="button"
+              onClick={handleScrollToCourses}
+              className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
+                    Meus Cursos
+                  </span>
+                  <span className="text-[11px] text-slate-500 block">
+                    Cursos disponíveis na conta
+                  </span>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+            </button>
+
+            {/* Atalho Certificado */}
+            {onGoToCertificates && (
+              <button
+                type="button"
+                onClick={onGoToCertificates}
+                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
+                    <Award className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
+                      Certificados
+                    </span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Status de conclusão
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            )}
+
+            {/* Atalho Avisos */}
+            {onGoToNotices && (
+              <button
+                type="button"
+                onClick={onGoToNotices}
+                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
+                      Avisos da Turma
+                    </span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Comunicados e atualizações
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            )}
+
+            {/* Atalho Ajuda */}
             {onGoToHelp && (
               <button
                 type="button"
                 onClick={onGoToHelp}
-                className="inline-flex items-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs sm:text-sm font-bold rounded-xl transition-colors cursor-pointer"
+                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
               >
-                <Lightbulb className="w-4 h-4 text-[#ea580c]" />
-                <span>Como usar a plataforma</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
+                    <HelpCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
+                      Ajuda & FAQ
+                    </span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Como usar a plataforma
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
               </button>
             )}
           </div>
         </section>
-      )}
+      </div>
 
       {/* ================= 3. SEÇÃO MEUS CURSOS ================= */}
-      <section aria-labelledby="section-meus-cursos-title" className="space-y-4">
+      <section id="section-meus-cursos" aria-labelledby="section-meus-cursos-title" className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
           <div>
             <h2
@@ -223,7 +386,7 @@ export function DashboardView({
             >
               Meus Cursos
             </h2>
-            <p className="text-xs text-slate-400 font-medium">
+            <p className="text-xs text-slate-500 font-medium">
               Cursos oficiais disponíveis na plataforma StudeoVL
             </p>
           </div>

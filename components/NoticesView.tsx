@@ -1,6 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+/**
+ * =======================================================================
+ * CENTRAL DE AVISOS E COMUNICADOS - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Responsável por exibir mensagens e novidades postadas pelos instrutores.
+ * Filtra os avisos de modo que o aluno só veja comunicados pertinentes
+ * aos cursos que ele possui liberados em seu perfil (`enrolledCourses`).
+ */
+
+import React, { useState } from "react";
 import { Bell, ArrowRight } from "lucide-react";
 import { getStoredNotices, Notice } from "@/lib/constants";
 import { getUserAccessibleCourseIds } from "@/lib/courseService";

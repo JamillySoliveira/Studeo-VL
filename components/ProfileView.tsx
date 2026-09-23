@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * =======================================================================
+ * PERFIL DO ALUNO (PROFILE VIEW) - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Permite ao aluno:
+ * - Visualizar seus dados cadastrais (nome, e-mail da conta Google, papel de acesso).
+ * - Atualizar seu nome de exibição (sincronizando tanto no Firebase Auth quanto no Firestore).
+ * - Encerrar a sessão com segurança.
+ */
+
 import React, { useState } from "react";
 import {
   User,

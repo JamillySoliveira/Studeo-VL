@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * =======================================================================
+ * MENU LATERAL DE NAVEGAÇÃO (SIDEBAR) - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Menu principal da área do aluno:
+ * - Itens: Início, Meus cursos, Avisos, Certificado, Meu perfil, Ajuda.
+ * - Exibe opção exclusiva de "Painel Admin" para usuários com `role === "admin"`.
+ * - Compatível com versão desktop (fixa na lateral) e mobile (gaveta retrátil).
+ */
+
 import React from "react";
 import {
   Home,
@@ -65,10 +76,8 @@ export function Sidebar({
     { id: "help", label: "Ajuda", icon: Lightbulb },
   ];
 
-  // Exibe o painel administrativo para usuários com role === "admin"
-  const isAdmin =
-    user?.role === "admin" ||
-    user?.email === "adm.vlautomacao@gmail.com";
+  // Exibe o painel administrativo exclusivamente para usuários com role === "admin"
+  const isAdmin = user?.role === "admin";
   if (isAdmin) {
     navItems.push({ id: "admin", label: "Painel Admin", icon: ShieldCheck });
   }

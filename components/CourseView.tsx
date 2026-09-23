@@ -1,5 +1,17 @@
 "use client";
 
+/**
+ * =======================================================================
+ * VISUALIZAÇÃO DO CURSO E GRADE DE AULAS - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Responsável pela listagem das aulas de um curso selecionado:
+ * - Valida se o aluno possui permissão de acesso (`hasAccess`). Se bloqueado, exibe tela de aquisição via WhatsApp.
+ * - Exibe a lista de aulas ordenadas, duração estimada e status de conclusão (concluída / pendente).
+ * - Identifica aulas que possuem atividade prática associada no Google Forms.
+ * - Permite alternar diretamente a conclusão de cada aula clicando no marcador.
+ */
+
 import React from "react";
 import {
   Check,

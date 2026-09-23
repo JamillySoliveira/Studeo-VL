@@ -1,5 +1,24 @@
 "use client";
 
+/**
+ * =======================================================================
+ * REPRODUTOR DE AULAS E ATIVIDADES (PLAYER) - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Responsável pela experiência de estudo do aluno:
+ * 1. Reprodução de Vídeos:
+ *    - Carrega vídeos do YouTube ou Google Drive com conversão para formato iframe embed.
+ * 2. Atividades no Google Forms:
+ *    - Permite abrir a atividade em nova aba e registrar a confirmação manual do envio.
+ * 3. Registro de Progresso:
+ *    - Botões para o aluno marcar a aula e a atividade como concluídas após o estudo.
+ * 4. Navegação:
+ *    - Botões de "Aula Anterior" e "Próxima Aula", além da lista lateral de aulas do curso.
+ * 5. Ferramenta de Administrador:
+ *    - Se o usuário for administrador (`role === "admin"`), permite atualizar o link do vídeo
+ *      diretamente no player, sem necessidade de sair da tela de estudo.
+ */
+
 import React, { useState } from "react";
 import {
   Check,

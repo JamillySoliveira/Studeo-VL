@@ -1,5 +1,17 @@
 "use client";
 
+/**
+ * =======================================================================
+ * PAINEL DE PROGRESSO INDIVIDUAL DO ALUNO - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Responsável pela exibição do progresso detalhado no curso ativo:
+ * - Calcula a porcentagem concluída com base nas aulas finalizadas.
+ * - Permite alternar entre os cursos matriculados do aluno através do seletor superior.
+ * - Exibe a lista completa de aulas com marcadores interativos de status.
+ * - Fornece atalhos diretos para continuar estudando a aula no reprodutor.
+ */
+
 import React from "react";
 import { Check, Circle, Play, BookOpen } from "lucide-react";
 import { Course, Lesson, UserProfile } from "@/lib/types";

@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * =======================================================================
+ * CENTRAL DE AJUDA E FAQ INTERATIVO - VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Apresenta as dúvidas mais frequentes dos alunos no formato de acordeão interativo:
+ * - Apenas uma resposta aberta por vez, com animação suave de transição (`motion`).
+ * - Explica passo a passo: acesso a cursos, visualização de vídeos, marcação de aulas
+ *   e formulários, acompanhamento de progresso e liberação do certificado.
+ */
+
 import React, { useState } from "react";
 import { ChevronDown, HelpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";

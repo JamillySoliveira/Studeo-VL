@@ -1,5 +1,35 @@
 "use client";
 
+/**
+ * =======================================================================
+ * ORQUESTRADOR PRINCIPAL DA PLATAFORMA VL AUTOMAÇÕES - ÁREA DO ALUNO
+ * =======================================================================
+ *
+ * Este componente raiz (`StudentApp`) coordena todo o ecossistema da plataforma:
+ * 
+ * 1. Autenticação (Firebase Auth):
+ *    - Monitora o estado de login do aluno em tempo real (`onAuthStateChanged`).
+ *    - Se deslogado, exibe a tela de login (`LoginScreen`) com autenticação Google.
+ *    - Se logado, sincroniza e consulta os dados de permissão no Cloud Firestore.
+ * 
+ * 2. Controle de Acesso:
+ *    - Se `accessEnabled === false`, exibe tela amigável informando a suspensão do acesso.
+ *    - Se `role === "admin"`, libera acesso irrestrito a todos os cursos e ao painel admin.
+ *    - Se `role === "student"`, filtra rigorosamente os cursos a partir de `enrolledCourses`.
+ * 
+ * 3. Gestão de Cursos e Aulas:
+ *    - Carrega os cursos disponíveis da VL Automações ("rockwell-basico", etc.).
+ *    - Gerencia a aula selecionada no reprodutor (`LessonPlayer`).
+ * 
+ * 4. Sistema de Progresso:
+ *    - Salva e consulta aulas e atividades de formulário concluídas no Firestore.
+ *    - Mantém o progresso de cada curso 100% isolado (um curso não interfere no outro).
+ * 
+ * 5. Navegação entre Abas:
+ *    - Início (Dashboard), Meus Cursos, Reprodutor, Avisos, Progresso, Certificado,
+ *      Perfil, Ajuda (FAQ interativo) e Painel Administrativo.
+ */
+
 import React, { useEffect, useState, useTransition } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -10,6 +40,7 @@ import {
   getUserCoursesProgressMap,
   syncUserProfile,
   toggleLessonProgress,
+  toggleFormProgress,
   getUserProfile,
 } from "@/lib/studentService";
 import {
@@ -35,16 +66,27 @@ import { HelpView } from "@/components/HelpView";
 import { AdminView } from "@/components/AdminView";
 
 export default function StudentApp() {
-  // Estado do Aluno Autenticado
+  // =====================================================================
+  // ESTADOS DO USUÁRIO E AUTENTICAÇÃO
+  // =====================================================================
+  
+  // Perfil do aluno logado (dados do Google + permissões salvas no Firestore)
   const [user, setUser] = useState<UserProfile | null>(null);
+  // Indicador de carregamento enquanto o Firebase verifica a sessão ativa
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Curso atualmente selecionado
+  // =====================================================================
+  // ESTADOS DE CURSOS E AULAS
+  // =====================================================================
+
+  // ID do curso que o aluno está visualizando no momento
   const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_COURSE_ID);
+  // Objeto completo com dados e aulas do curso ativo
   const [course, setCourse] = useState<Course>(INITIAL_COURSE);
+  // Lista com todos os cursos cadastrados na plataforma
   const [allCourses, setAllCourses] = useState<Course[]>([INITIAL_COURSE]);
 
-  // Aula selecionada atualmente para assistir
+  // Aula selecionada atualmente para assistir no reprodutor
   const [currentLesson, setCurrentLesson] = useState<Lesson>(
     INITIAL_COURSE.lessons[0] || {
       id: "aula-1-1",
@@ -57,20 +99,34 @@ export default function StudentApp() {
     }
   );
 
-  // Progresso do Aluno (IDs das aulas concluídas do curso selecionado)
+  // =====================================================================
+  // ESTADOS DE PROGRESSO DO ALUNO
+  // =====================================================================
+
+  // Lista com IDs das aulas concluídas no curso ativo
   const [completedLessons, setCompletedLessons] = useState<string[]>([]);
-  // Mapa de progresso independente por curso (nunca misturado entre cursos)
+  // Lista com IDs das atividades do Google Forms concluídas no curso ativo
+  const [completedForms, setCompletedForms] = useState<string[]>([]);
+  // Mapa de progresso independente por curso: { [courseId]: string[] }
   const [coursesProgressMap, setCoursesProgressMap] = useState<Record<string, string[]>>({});
+
+  // =====================================================================
+  // ESTADOS DE NAVEGAÇÃO E INTERFACE
+  // =====================================================================
+
+  // Aba ativa na tela do aluno
   const [currentTab, setCurrentTab] = useState<TabType>("dashboard");
-
-  // Controle do menu mobile lateral
+  // Controle de abertura da gaveta/menu lateral no celular
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // Toast de feedback
+  // Mensagem temporária flutuante (Toast de notificação)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // O useTransition evita congelamento da interface durante atualizações de estado
   const [, startTransition] = useTransition();
 
+  /**
+   * Exibe uma notificação rápida na parte inferior da tela
+   */
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -78,7 +134,11 @@ export default function StudentApp() {
     }, 3500);
   };
 
-  // Carrega os 3 cursos sempre que o selectedCourseId mudar
+  // =====================================================================
+  // SINCRONIZAÇÃO DE DADOS COM O FIRESTORE
+  // =====================================================================
+
+  // 1. Carrega todos os cursos sempre que o curso selecionado for alterado
   useEffect(() => {
     let isMounted = true;
     getAllCourses().then((courses) => {
@@ -102,7 +162,7 @@ export default function StudentApp() {
     };
   }, [selectedCourseId]);
 
-  // Carrega o progresso do usuário para o curso ativo
+  // 2. Busca o progresso (aulas e formulários) do aluno para o curso ativo no Firestore
   useEffect(() => {
     if (!user?.uid) return;
     let isMounted = true;
@@ -111,6 +171,7 @@ export default function StudentApp() {
       if (!isMounted) return;
       startTransition(() => {
         setCompletedLessons(progressData.completedLessons || []);
+        setCompletedForms(progressData.completedForms || []);
         setCoursesProgressMap((prev) => ({
           ...prev,
           [selectedCourseId]: progressData.completedLessons || [],
@@ -123,7 +184,7 @@ export default function StudentApp() {
     };
   }, [user?.uid, selectedCourseId]);
 
-  // Carrega o progresso independente de todos os cursos oficiais disponíveis
+  // 3. Carrega o mapa de progresso de todos os cursos para exibição no Dashboard
   useEffect(() => {
     if (!user?.uid) return;
     let isMounted = true;
@@ -146,13 +207,13 @@ export default function StudentApp() {
     };
   }, [user?.uid]);
 
-  // Monitora o estado de login do Firebase Authentication em tempo real
+  // 4. Observa o estado de autenticação do Firebase em tempo real
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
       async (firebaseUser: User | null) => {
         if (firebaseUser) {
-          // O role de admin é mantido pelo documento do usuário no Firestore ou pela conta mestre oficial
+          // Identifica conta mestre oficial de administração
           const isAdminEmail =
             firebaseUser.email === "adm.vlautomacao@gmail.com";
 
@@ -168,10 +229,10 @@ export default function StudentApp() {
             enrolledCourses: [INITIAL_COURSE_ID],
           };
 
-          // 1. Sincroniza usuário na coleção "users" do Firestore
+          // Salva/sincroniza o usuário na coleção "users"
           await syncUserProfile(studentProfile);
 
-          // 2. Carrega permissões e enrolledCourses salvos no Firestore
+          // Lê permissões salvas no documento do usuário no Firestore
           const dbProfile = await getUserProfile(firebaseUser.uid);
           if (dbProfile) {
             studentProfile.accessEnabled = dbProfile.accessEnabled;
@@ -184,8 +245,7 @@ export default function StudentApp() {
           startTransition(() => {
             setUser(studentProfile);
 
-            // Se o usuário não for admin e não tiver acesso ao curso padrão selecionado,
-            // seleciona o primeiro curso disponível em seus enrolledCourses
+            // Garante que o curso ativo esteja entre os cursos liberados para o aluno
             const accessibleIds = getUserAccessibleCourseIds(studentProfile);
             if (
               accessibleIds.length > 0 &&
@@ -207,7 +267,7 @@ export default function StudentApp() {
     return () => unsubscribe();
   }, [selectedCourseId]);
 
-  // Recarrega todos os cursos
+  // Recarrega todos os cursos após alterações administrativas
   const reloadAllCourses = async () => {
     const courses = await getAllCourses();
     startTransition(() => {
@@ -218,7 +278,11 @@ export default function StudentApp() {
     });
   };
 
-  // Login de Demonstração Rápida
+  // =====================================================================
+  // AÇÕES DO USUÁRIO
+  // =====================================================================
+
+  // Login de Demonstração Rápida (para testes)
   const handleDemoLogin = async () => {
     const demoUser: UserProfile = {
       uid: "demo-aluno-vl-001",
@@ -235,6 +299,7 @@ export default function StudentApp() {
       const progressData = await getUserProgress(demoUser.uid, selectedCourseId);
       if (progressData.completedLessons.length > 0) {
         setCompletedLessons(progressData.completedLessons);
+        setCompletedForms(progressData.completedForms || []);
       } else {
         const initialDemoProgress = [
           course.lessons[0]?.id || "aula-1-1",
@@ -243,11 +308,11 @@ export default function StudentApp() {
         setCompletedLessons(initialDemoProgress);
       }
     } catch (e) {
-      console.warn(e);
+      console.warn("Erro ao carregar progresso demo:", e);
     }
   };
 
-  // Logout do Aluno
+  // Encerra a sessão do aluno no Firebase
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -260,7 +325,7 @@ export default function StudentApp() {
     }
   };
 
-  // Seleciona um curso ativo
+  // Seleciona um curso ativo na plataforma
   const handleSelectCourse = async (courseId: string) => {
     setSelectedCourseId(courseId);
     const targetCourse = await getCourseData(courseId);
@@ -275,13 +340,14 @@ export default function StudentApp() {
       const progressData = await getUserProgress(user.uid, courseId);
       startTransition(() => {
         setCompletedLessons(progressData.completedLessons || []);
+        setCompletedForms(progressData.completedForms || []);
       });
     }
 
     showToast("Curso selecionado!");
   };
 
-  // Alterna o status da aula como concluída / pendente e salva no Firestore
+  // Alterna o status da aula entre concluída e pendente, salvando no Firestore
   const handleToggleLessonComplete = async (lessonId: string) => {
     if (!user) return;
 
@@ -291,7 +357,10 @@ export default function StudentApp() {
         user.uid,
         course.id,
         lessonId,
-        completedLessons
+        completedLessons,
+        completedForms,
+        course.lessons.length,
+        course.lessons.filter((l) => Boolean(l.formUrl)).length
       );
       setCompletedLessons(result.updatedLessons);
       setCoursesProgressMap((prev) => ({
@@ -305,49 +374,84 @@ export default function StudentApp() {
         showToast("Aula desmarcada.");
       }
     } catch (error) {
-      console.error("Erro ao atualizar progresso:", error);
+      console.error("Erro ao atualizar progresso de aula:", error);
     }
   };
 
-  // Seleciona um curso e navega diretamente para a grade de aulas
+  // Alterna o status da atividade do Google Forms de uma aula no Firestore
+  const handleToggleFormComplete = async (lessonId: string) => {
+    if (!user) return;
+
+    const wasCompleted = completedForms.includes(lessonId);
+    try {
+      const result = await toggleFormProgress(
+        user.uid,
+        course.id,
+        lessonId,
+        completedForms,
+        completedLessons,
+        course.lessons.length,
+        course.lessons.filter((l) => Boolean(l.formUrl)).length
+      );
+      setCompletedForms(result.updatedForms);
+
+      if (!wasCompleted) {
+        showToast("Formulário marcado como respondido!");
+      } else {
+        showToast("Formulário desmarcado.");
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar status do formulário:", error);
+    }
+  };
+
+  // Seleciona um curso e redireciona direto para a lista de aulas
   const handleSelectAndOpenCourse = async (courseId: string) => {
     await handleSelectCourse(courseId);
     setCurrentTab("course");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Atualização direta do link do Google Drive pelo administrador
+  // Permite ao administrador salvar um novo link de vídeo para a aula
   const handleUpdateLessonVideoUrl = async (lessonId: string, videoUrl: string) => {
     await saveLessonVideoUrl(lessonId, videoUrl, course.id);
     await reloadAllCourses();
     showToast("Link do vídeo atualizado com sucesso!");
   };
 
-  // Seleciona uma aula para assistir e abre o reprodutor
+  // Abre uma aula específica no reprodutor de vídeo
   const handleSelectLesson = (lesson: Lesson) => {
     setCurrentLesson(lesson);
     setCurrentTab("lesson");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Lista dos cursos acessíveis pelo aluno a partir de enrolledCourses
+  // =====================================================================
+  // CÁLCULOS DE ACESSO E PROGRESSO
+  // =====================================================================
+
+  // Lista dos cursos liberados para o aluno visualizar no menu e no dashboard
   const accessibleCourseIds = getUserAccessibleCourseIds(user);
   const enrolledCoursesList =
     user?.role === "admin"
       ? allCourses
       : allCourses.filter((c) => accessibleCourseIds.includes(c.id));
 
-  // Permissão de acesso ao curso ativo
+  // Valida se o aluno possui acesso ao curso ativo
   const hasAccess = checkUserCourseAccess(user, course.id);
 
-  // Cálculos de métricas do curso atual
+  // Métricas do curso atual
   const lessons = course.lessons || [];
   const totalLessons = lessons.length;
   const completedCount = completedLessons.length;
   const progressPercent =
     totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
 
-  // Tela de Carregamento Inicial do Firebase Auth
+  // =====================================================================
+  // RENDERIZAÇÃO: TELAS ESPECIAIS (LOADING, LOGIN E BLOQUEIO)
+  // =====================================================================
+
+  // 1. Tela de Carregamento Inicial do Firebase Auth
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4">
@@ -362,7 +466,7 @@ export default function StudentApp() {
     );
   }
 
-  // Se o aluno NÃO estiver logado, exibe a Tela de Login (exclusivamente com Google)
+  // 2. Se o aluno não estiver autenticado, exibe a tela de login
   if (!user) {
     return (
       <LoginScreen
@@ -372,7 +476,7 @@ export default function StudentApp() {
     );
   }
 
-  // Se o aluno ESTIVER logado, mas o acesso geral à plataforma estiver bloqueado (accessEnabled === false)
+  // 3. Se o acesso geral do aluno estiver bloqueado (accessEnabled === false)
   if (user.accessEnabled === false && user.role !== "admin") {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-6 text-center">
@@ -400,10 +504,12 @@ export default function StudentApp() {
     );
   }
 
-  // Se o aluno ESTIVER logado e liberado, exibe a Área do Aluno completa
+  // =====================================================================
+  // RENDERIZAÇÃO: ÁREA DO ALUNO COMPLETA
+  // =====================================================================
   return (
     <div id="vl-student-platform" className="min-h-screen bg-[#f8fafc] flex">
-      {/* Menu Lateral Responsivo */}
+      {/* Menu Lateral de Navegação */}
       <Sidebar
         currentTab={currentTab}
         onSelectTab={(tab) => {
@@ -417,7 +523,7 @@ export default function StudentApp() {
         progressPercent={progressPercent}
       />
 
-      {/* Conteúdo Principal */}
+      {/* Conteúdo Principal da Plataforma */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Barra Superior (Navbar) */}
         <Navbar
@@ -439,8 +545,9 @@ export default function StudentApp() {
           </div>
         )}
 
-        {/* Renderização Condicional das Abas do Aluno */}
+        {/* Exibição Condicional de Abas */}
         <main id="vl-main-content" className="flex-1 p-4 sm:p-6 lg:p-8">
+          {/* 1. Início / Dashboard */}
           {currentTab === "dashboard" && (
             <DashboardView
               user={user}
@@ -465,6 +572,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 2. Meus Cursos */}
           {currentTab === "course" && (
             <CourseView
               course={course}
@@ -477,6 +585,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 3. Avisos da Plataforma */}
           {currentTab === "notices" && (
             <NoticesView
               user={user}
@@ -484,12 +593,15 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 4. Reprodutor de Aulas e Atividades */}
           {currentTab === "lesson" && (
             <LessonPlayer
               course={course}
               currentLesson={currentLesson}
               completedLessons={completedLessons}
+              completedForms={completedForms}
               onToggleComplete={handleToggleLessonComplete}
+              onToggleFormComplete={handleToggleFormComplete}
               onSelectLesson={(lesson) => setCurrentLesson(lesson)}
               onGoToCourse={() => setCurrentTab("course")}
               user={user}
@@ -498,6 +610,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 5. Acompanhamento de Progresso */}
           {currentTab === "progress" && (
             <ProgressView
               user={user}
@@ -510,6 +623,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 6. Certificado Oficial */}
           {currentTab === "certificate" && (
             <CertificateView
               user={user}
@@ -522,6 +636,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 7. Perfil do Aluno */}
           {currentTab === "profile" && (
             <ProfileView
               user={user}
@@ -537,6 +652,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 8. Ajuda e FAQ Interativo */}
           {currentTab === "help" && (
             <HelpView
               onGoToCourses={() => {
@@ -550,6 +666,7 @@ export default function StudentApp() {
             />
           )}
 
+          {/* 9. Painel Administrativo */}
           {currentTab === "admin" && (
             <AdminView
               course={course}

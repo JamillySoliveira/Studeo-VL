@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * =======================================================================
+ * TELA DE LOGIN - PLATAFORMA VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Responsável pela autenticação segura do aluno na plataforma:
+ * - Utiliza exclusivamente o Firebase Authentication com login do Google (`signInWithPopup`).
+ * - Fornece tratamento amigável de erros (janela pop-up fechada pelo usuário ou bloqueada).
+ * - Disponibiliza opção de "Acesso Rápido de Demonstração" para testes da interface.
+ */
+
 import React, { useState } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";

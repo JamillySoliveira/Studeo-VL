@@ -1,12 +1,19 @@
 /**
- * Serviço de Cursos, Aulas e Permissões de Usuários no Cloud Firestore
+ * =======================================================================
+ * SERVIÇO DE CURSOS, AULAS E ADMINISTRAÇÃO NO FIRESTORE - VL AUTOMAÇÕES
+ * =======================================================================
  *
- * Arquitetura Simplificada:
- * Curso └── Aulas (cada aula associada diretamente através de courseId)
+ * Este arquivo gerencia todas as operações de banco de dados sobre cursos e administração:
+ * 1. Consulta dos cursos e suas respectivas aulas (com suporte a vídeos do YouTube e Google Drive)
+ * 2. Controle de acesso por usuário:
+ *    - accessEnabled: define se a conta do aluno está ativa ou bloqueada
+ *    - enrolledCourses: define os cursos específicos liberados para aquele aluno
+ *    - role: "admin" possui acesso irrestrito a todos os cursos e ao painel de controle
+ * 3. Gestão de aulas pelo administrador (adicionar, editar links de vídeo, ordenar e excluir)
+ * 4. Gestão de certificados por curso (anexo do PDF oficial disponibilizado pelo administrador)
+ * 5. Gerenciamento de alunos e permissões na coleção "users"
  *
- * Controle de Acesso:
- * - accessEnabled: controla se o usuário pode acessar a plataforma
- * - enrolledCourses: lista de IDs de cursos liberados para o aluno (ex: ["rockwell-basico"])
+ * Utiliza o Cloud Firestore como banco principal e o localStorage como cache rápido.
  */
 
 import {
@@ -27,11 +34,13 @@ import {
   INITIAL_COURSE,
 } from "./courseData";
 
+// Chaves utilizadas para cache no localStorage do navegador
 const STORAGE_LESSONS_OVERRIDE_KEY = "vl_lessons_custom_urls";
 const STORAGE_COURSE_CERT_PREFIX = "vl_course_cert_";
 
 /**
- * Lê certificado salvo localmente no cache.
+ * Lê os dados do certificado salvos no cache local do navegador.
+ * Evita tela em branco se houver instabilidade momentânea na conexão.
  */
 function getLocalCourseCertificate(courseId: string): Partial<Course> | null {
   if (typeof window === "undefined") return null;
@@ -44,7 +53,7 @@ function getLocalCourseCertificate(courseId: string): Partial<Course> | null {
 }
 
 /**
- * Salva ou remove o certificado no cache local.
+ * Salva ou remove o certificado do cache local.
  */
 function setLocalCourseCertificate(
   courseId: string,
@@ -66,7 +75,7 @@ function setLocalCourseCertificate(
 }
 
 /**
- * Lê alterações locais das aulas (cache para resiliência).
+ * Lê do localStorage eventuais edições feitas nas aulas (URLs de vídeos, formulários, títulos).
  */
 function getLocalLessonsOverrides(): Record<string, Partial<Lesson>> {
   if (typeof window === "undefined") return {};
@@ -80,7 +89,7 @@ function getLocalLessonsOverrides(): Record<string, Partial<Lesson>> {
 }
 
 /**
- * Salva uma alteração de aula no cache local.
+ * Atualiza o cache local de uma aula para exibição instantânea.
  */
 function setLocalLessonsOverride(
   lessonId: string,
@@ -106,7 +115,7 @@ function setLocalLessonsOverride(
 }
 
 /**
- * Normaliza o ID de um curso para compatibilidade com dados legados.
+ * Normaliza o ID do curso para manter total compatibilidade com dados legados.
  */
 export function normalizeCourseId(courseId?: string): string {
   if (!courseId) return INITIAL_COURSE_ID;
@@ -117,20 +126,20 @@ export function normalizeCourseId(courseId?: string): string {
 }
 
 /**
- * Retorna os IDs dos cursos aos quais o usuário tem acesso a partir de enrolledCourses.
+ * Determina quais cursos estão liberados para o aluno visualizar.
  * 
- * Regra:
- * - accessEnabled: determina se o usuário pode utilizar a plataforma.
- * - enrolledCourses: determina quais cursos o usuário possui acesso (fonte da verdade).
- * - Administradores (role === "admin") possuem acesso administrativo e liberado a todos os cursos.
+ * Regras de Acesso:
+ * - Se accessEnabled === false, o usuário não acessa nenhum curso.
+ * - Administradores (role === "admin") possuem acesso liberado a todos os cursos.
+ * - Alunos regulares acessam apenas os cursos listados no array `enrolledCourses` do seu perfil no Firestore.
  */
 export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
   if (!user) return [];
 
-  // Se o usuário estiver bloqueado pelo accessEnabled, não acessa nenhum curso
+  // Se o aluno estiver inativado pelo administrador, bloqueia o acesso
   if (user.accessEnabled === false) return [];
 
-  // Administradores possuem acesso total a todos os cursos através do role
+  // Administrador tem acesso a todos os cursos cadastrados
   if (user.role === "admin") {
     return AVAILABLE_COURSES.map((c) => c.id);
   }
@@ -138,7 +147,7 @@ export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
   const enrolled = Array.isArray(user.enrolledCourses) ? user.enrolledCourses : [];
   const accessible: string[] = [];
 
-  // Validação estrita por curso em enrolledCourses (com compatibilidade para o ID legado)
+  // Verifica cada curso liberado no perfil do aluno
   if (
     enrolled.includes("rockwell-basico") ||
     enrolled.includes("rockwell-controle-analogico-supervisorio")
@@ -158,11 +167,7 @@ export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
 }
 
 /**
- * Verifica se o usuário possui acesso ao curso específico através do seu role e de enrolledCourses.
- * 
- * - Se accessEnabled === false, o acesso a qualquer curso é negado.
- * - Se role === "admin", acesso concedido.
- * - Se role !== "admin", verifica se o courseId está estritamente presente nos cursos de enrolledCourses.
+ * Verifica se um aluno específico possui permissão para acessar determinado curso.
  */
 export function checkUserCourseAccess(
   user: UserProfile | null,
@@ -178,14 +183,17 @@ export function checkUserCourseAccess(
 }
 
 /**
- * Busca os dados de um curso com suas aulas diretas (sem módulos na estrutura principal).
+ * Carrega todas as informações de um curso específico:
+ * - Informações gerais (título, descrição, instrutor, certificado anexado)
+ * - Lista ordenada de todas as aulas vinculadas a ele no Firestore
+ * - Aplica os links de vídeo e formulários salvos
  */
 export async function getCourseData(
   courseId: string = INITIAL_COURSE_ID
 ): Promise<Course> {
   const effectiveCourseId = normalizeCourseId(courseId);
 
-  // Localiza a base estática do curso
+  // Localiza os dados estáticos base do curso
   const baseFound = AVAILABLE_COURSES.find((c) => c.id === effectiveCourseId);
   const baseCourse: Course = baseFound
     ? JSON.parse(JSON.stringify(baseFound))
@@ -194,7 +202,7 @@ export async function getCourseData(
   const localOverrides = getLocalLessonsOverrides();
 
   try {
-    // 1. Busca dados do curso no Firestore (se houver customizações)
+    // 1. Busca personalizações salvas no documento 'courses/{courseId}' no Firestore
     try {
       const courseRef = doc(db, "courses", effectiveCourseId);
       const courseSnapshot = await getDoc(courseRef);
@@ -225,7 +233,7 @@ export async function getCourseData(
         baseCourse.certificateUploadedAt = firestoreCourse.certificateUploadedAt || undefined;
       }
 
-      // Se não veio do Firestore, tenta recuperar do cache local
+      // Se não houver certificado no Firestore, busca do cache local
       if (!baseCourse.certificateUrl) {
         const localCert = getLocalCourseCertificate(effectiveCourseId);
         if (localCert?.certificateUrl) {
@@ -236,7 +244,7 @@ export async function getCourseData(
         }
       }
     } catch (error) {
-      console.warn("Aviso ao buscar dados gerais do curso no Firestore:", error);
+      console.warn("Aviso ao buscar dados do curso no Firestore:", error);
       const localCert = getLocalCourseCertificate(effectiveCourseId);
       if (localCert?.certificateUrl) {
         baseCourse.certificateUrl = localCert.certificateUrl;
@@ -246,7 +254,7 @@ export async function getCourseData(
       }
     }
 
-    // 2. Busca as aulas no Firestore pertencentes ao courseId
+    // 2. Busca todas as aulas pertencentes a este curso na coleção "lessons"
     let firestoreLessons: Lesson[] = [];
     try {
       const lessonsSnapshot = await getDocs(collection(db, "lessons"));
@@ -268,7 +276,7 @@ export async function getCourseData(
           return lesCourseId === effectiveCourseId;
         });
 
-      // Preserva aulas que possam ter sido salvas na estrutura legada de módulos no Firestore
+      // Preserva aulas de eventuais módulos legados
       try {
         const modulesSnapshot = await getDocs(collection(db, "modules"));
         modulesSnapshot.docs.forEach((mDoc) => {
@@ -289,16 +297,15 @@ export async function getCourseData(
           }
         });
       } catch {
-        // Sem impacto se a coleção de módulos não estiver presente
+        // Ignora caso a coleção legada de módulos não exista
       }
     } catch (error) {
       console.warn("Aviso ao buscar aulas no Firestore:", error);
     }
 
-    // 3. Monta o mapa das aulas (Base + Firestore + Cache Local)
+    // 3. Mescla as aulas base com as atualizações salvas no Firestore e no cache
     const lessonsMap = new Map<string, Lesson>();
 
-    // Aulas base padrão do curso
     baseCourse.lessons.forEach((l) => {
       lessonsMap.set(l.id, {
         ...l,
@@ -306,7 +313,6 @@ export async function getCourseData(
       });
     });
 
-    // Aulas salvas no Firestore (ignora IDs de seeds legadas como 'aula-1-1' no curso básico)
     firestoreLessons.forEach((l) => {
       if (
         effectiveCourseId === "rockwell-basico" &&
@@ -325,7 +331,7 @@ export async function getCourseData(
       });
     });
 
-    // Aplica overrides locais e normaliza
+    // Aplica alterações salvas no cache local
     const mergedLessons: Lesson[] = Array.from(lessonsMap.values())
       .map((lesson) => {
         const local = localOverrides[lesson.id] || {};
@@ -344,7 +350,7 @@ export async function getCourseData(
     baseCourse.lessons = mergedLessons;
     baseCourse.totalLessons = mergedLessons.length;
 
-    // Mantém modules preenchido para compatibilidade com código legado
+    // Mantém modules para compatibilidade
     baseCourse.modules = [
       {
         id: "main",
@@ -375,7 +381,7 @@ export async function getCourseData(
 }
 
 /**
- * Retorna todos os 3 cursos com suas respectivas aulas.
+ * Retorna todos os cursos disponíveis com suas aulas atualizadas.
  */
 export async function getAllCourses(): Promise<Course[]> {
   const promises = AVAILABLE_COURSES.map((c) => getCourseData(c.id));
@@ -383,12 +389,8 @@ export async function getAllCourses(): Promise<Course[]> {
 }
 
 /**
- * Alias mantido para compatibilidade.
- */
-export const getCourseWithOverrides = getCourseData;
-
-/**
- * Salva o link do vídeo de uma aula.
+ * Salva ou atualiza a URL do vídeo de uma aula (suporta YouTube e Google Drive).
+ * Chamado pelo administrador para disponibilizar a gravação da aula.
  */
 export async function saveLessonVideoUrl(
   lessonId: string,
@@ -422,7 +424,7 @@ export async function saveLessonVideoUrl(
 }
 
 /**
- * Atualiza os dados de uma aula existente.
+ * Atualiza campos específicos de uma aula (título, descrição, formulário, etc.).
  */
 export async function updateLessonDetails(
   lessonId: string,
@@ -453,11 +455,11 @@ export async function updateLessonDetails(
 }
 
 /* ============================================================
-   CRUD DE AULAS (Curso └── Aulas)
+   OPERAÇÕES ADMINISTRATIVAS DE AULAS
    ============================================================ */
 
 /**
- * Cria uma nova aula diretamente associada a um curso.
+ * Cria uma nova aula diretamente vinculada a um curso no Firestore.
  */
 export async function addLesson(lesson: Lesson): Promise<void> {
   const effectiveCourseId = normalizeCourseId(lesson.courseId);
@@ -488,7 +490,7 @@ export async function addLesson(lesson: Lesson): Promise<void> {
 }
 
 /**
- * Atualiza uma aula existente.
+ * Atualiza os dados de uma aula no Firestore.
  */
 export async function updateLesson(
   lessonId: string,
@@ -516,7 +518,7 @@ export async function updateLesson(
 }
 
 /**
- * Exclui uma aula.
+ * Exclui uma aula do Firestore e do cache local.
  */
 export async function deleteLesson(lessonId: string): Promise<void> {
   const lessonRef = doc(db, "lessons", lessonId);
@@ -537,7 +539,7 @@ export async function deleteLesson(lessonId: string): Promise<void> {
 }
 
 /**
- * Atualiza a ordem de uma lista de aulas.
+ * Atualiza a sequência/ordem numérica de exibição de uma lista de aulas.
  */
 export async function updateLessonsOrder(
   orderedLessons: { id: string; order: number }[]
@@ -548,12 +550,12 @@ export async function updateLessonsOrder(
 }
 
 /* ============================================================
-   GESTÃO DE CERTIFICADOS POR CURSO
+   GESTÃO DE CERTIFICADOS PELO ADMINISTRADOR
    ============================================================ */
 
 /**
- * Salva o arquivo de certificado cadastrado pelo administrador para determinado curso.
- * Persiste no Firestore na coleção 'courses' e no cache local.
+ * Vincula o arquivo de certificado cadastrado pelo administrador ao curso.
+ * Salva na coleção "courses" do Firestore e no cache local.
  */
 export async function saveCourseCertificate(
   courseId: string,
@@ -571,7 +573,6 @@ export async function saveCourseCertificate(
     certificateUploadedAt: new Date().toISOString(),
   };
 
-  // Salva no cache local para resiliência imediata
   setLocalCourseCertificate(effectiveCourseId, payload);
 
   try {
@@ -583,12 +584,11 @@ export async function saveCourseCertificate(
 }
 
 /**
- * Remove o arquivo de certificado vinculado ao curso.
+ * Remove o arquivo de certificado associado ao curso.
  */
 export async function removeCourseCertificate(courseId: string): Promise<void> {
   const effectiveCourseId = normalizeCourseId(courseId);
 
-  // Limpa cache local
   setLocalCourseCertificate(effectiveCourseId, null);
 
   try {
@@ -609,11 +609,12 @@ export async function removeCourseCertificate(courseId: string): Promise<void> {
 }
 
 /* ============================================================
-   GESTÃO DE USUÁRIOS E PERMISSÕES
+   GESTÃO DE ALUNOS E PERMISSÕES (PAINEL ADMINISTRATIVO)
    ============================================================ */
 
 /**
- * Busca todos os usuários cadastrados.
+ * Busca a lista de todos os usuários registrados no sistema.
+ * Utilizado pelo administrador para gerenciar matrículas e acessos.
  */
 export async function fetchAllUsers(): Promise<UserProfile[]> {
   try {
@@ -633,7 +634,7 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
 }
 
 /**
- * Bloqueia ou libera o acesso de um usuário à plataforma (accessEnabled).
+ * Ativa ou suspende o acesso de um aluno à plataforma (campo accessEnabled).
  */
 export async function toggleUserAccess(
   userId: string,
@@ -652,8 +653,7 @@ export async function toggleUserAccess(
 }
 
 /**
- * Atualiza exclusivamente a lista de cursos matriculados do usuário (enrolledCourses).
- * Não mistura com accessEnabled.
+ * Atualiza a lista de cursos liberados para determinado aluno (campo enrolledCourses).
  */
 export async function updateUserEnrolledCourses(
   userId: string,
@@ -672,7 +672,7 @@ export async function updateUserEnrolledCourses(
 }
 
 /* ============================================================
-   FUNÇÕES LEGADAS DE MÓDULOS (Mantidas para compatibilidade)
+   COMPATIBILIDADE RETROATIVA
    ============================================================ */
 
 export async function addModule(courseId: string, module: Module): Promise<void> {

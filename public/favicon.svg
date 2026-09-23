@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Fundo quadrado na cor laranja da VL Automações -->
+  <rect width="64" height="64" fill="#ea580c"/>
+  <!-- Iniciais "VL" em branco com alta legibilidade -->
+  <text
+    x="32"
+    y="35"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Liberation Sans', Arial, sans-serif"
+    font-weight="900"
+    font-size="34"
+    fill="#ffffff"
+    text-anchor="middle"
+    dominant-baseline="central"
+    letter-spacing="-1.5"
+  >VL</text>
+</svg>

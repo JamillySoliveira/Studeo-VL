@@ -3,42 +3,27 @@
  * CONFIGURAÇÃO CENTRALIZADA DA PLATAFORMA VL AUTOMAÇÕES
  * =======================================================================
  * 
- * Este arquivo concentra parâmetros globais do sistema, como o número de WhatsApp
- * para atendimento e solicitação de acesso aos cursos, evitando duplicação
- * e dispersão de valores pelo código.
+ * Este arquivo concentra as constantes globais da plataforma:
+ * 1. Número oficial do WhatsApp para atendimento e liberação manual de acessos.
+ * 2. Mensagens pré-formatadas para solicitação de acesso aos cursos.
+ * 3. Função centralizada de geração de links do WhatsApp (`getCourseWhatsAppUrl`).
+ * 4. Avisos gerais da plataforma destinados aos alunos.
  */
-
-// Número oficial do WhatsApp para contato, vendas e liberação manual de cursos.
-// Formato internacional DDI + DDD + Número (apenas dígitos).
-// Para alterar o número, basta modificar esta constante ou definir NEXT_PUBLIC_WHATSAPP_NUMBER no .env.
-export const WHATSAPP_NUMBER =
-  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511999999999";
 
 /**
- * Obtém o número configurado do WhatsApp (com fallback para a constante padrão).
+ * NÚMERO DO WHATSAPP OFICIAL (CONFIGURAÇÃO ÚNICA NO CÓDIGO)
+ * 
+ * Todas as telas da plataforma que geram links para o WhatsApp (cards de cursos,
+ * botões de compra, telas de curso bloqueado) consomem exclusivamente esta constante.
+ * Para atualizar o número de contato da VL Automações no futuro, altere apenas esta linha.
+ * Formato internacional: DDI + DDD + Número (apenas dígitos).
  */
-export function getSavedWhatsAppNumber(): string {
-  if (typeof window !== "undefined") {
-    try {
-      const saved = localStorage.getItem("vl_whatsapp_number");
-      if (saved && saved.trim()) return saved.trim();
-    } catch {}
-  }
-  return WHATSAPP_NUMBER;
-}
+export const WHATSAPP_NUMBER = "5512996092249";
 
 /**
- * Salva o número customizado do WhatsApp no cache local do navegador.
+ * Mensagens padrão geradas para o aluno iniciar o contato via WhatsApp
+ * de acordo com o curso que deseja adquirir.
  */
-export function saveCustomWhatsAppNumber(num: string): void {
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem("vl_whatsapp_number", num.trim());
-    } catch {}
-  }
-}
-
-// Mensagens padrão para abertura de contato via WhatsApp ao clicar em "OBTER ACESSO AO CURSO"
 export const WHATSAPP_COURSE_MESSAGES: Record<string, string> = {
   "rockwell-basico": "Olá! Gostaria de obter acesso ao curso Programação Rockwell - Básico.",
   "rockwell-intermediario": "Olá! Gostaria de obter acesso ao curso Programação Rockwell - Intermediário.",
@@ -46,18 +31,18 @@ export const WHATSAPP_COURSE_MESSAGES: Record<string, string> = {
 };
 
 /**
- * Gera a URL oficial do WhatsApp com a mensagem pré-formatada para o curso selecionado.
+ * Gera a URL oficial da API do WhatsApp (`https://wa.me/...`)
+ * com o número oficial configurado e o texto da mensagem codificado em URI.
  * 
  * @param courseId Identificador do curso (ex: "rockwell-intermediario")
- * @returns Link https://wa.me/... com a mensagem codificada em URI
+ * @returns Link seguro para abertura direta no aplicativo do WhatsApp ou WhatsApp Web
  */
 export function getCourseWhatsAppUrl(courseId: string): string {
-  const currentNumber = getSavedWhatsAppNumber();
   const message =
     WHATSAPP_COURSE_MESSAGES[courseId] ||
     "Olá! Gostaria de obter acesso ao curso da VL Automações.";
   const encodedText = encodeURIComponent(message);
-  return `https://wa.me/${currentNumber}?text=${encodedText}`;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodedText}`;
 }
 
 export interface Notice {
@@ -147,4 +132,3 @@ export function deleteStoredNotice(noticeId: string): void {
     } catch {}
   }
 }
-

@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * =======================================================================
+ * BARRA SUPERIOR (NAVBAR) - PLATAFORMA VL AUTOMAÇÕES
+ * =======================================================================
+ *
+ * Exibe o título da aba atual, botão para abrir o menu no celular,
+ * dados rápidos do usuário e botão de logout.
+ */
+
 import React from "react";
 import { Menu, LogOut } from "lucide-react";
 import { UserProfile } from "@/lib/types";
