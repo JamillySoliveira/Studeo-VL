@@ -1,174 +1,164 @@
 "use client";
 
-import React, { useState } from "react";
-import { Award, Download, CheckCircle2, Clock, Lock, FileText, Check } from "lucide-react";
+import React from "react";
+import { Award, BookOpen, Clock, Download, CheckCircle2 } from "lucide-react";
 import { Course, UserProfile } from "@/lib/types";
 
 interface CertificateViewProps {
   user: UserProfile | null;
   course: Course;
+  enrolledCourses?: Course[];
+  onSelectCourse?: (courseId: string) => void;
   completedLessonsCount: number;
   totalLessonsCount: number;
   onGoToCourse: () => void;
 }
 
+/**
+ * Aba de Certificado da Plataforma VL Automações
+ *
+ * Exibe o status de liberação do certificado de forma limpa e direta:
+ * - Se o curso ainda não estiver concluído: "Certificado disponível após a conclusão do curso."
+ * - Quando concluído (100%) e o certificado estiver cadastrado pelo administrador:
+ *   Exibe "✓ Curso concluído", "Seu certificado está disponível." e o botão "🏆 BAIXAR CERTIFICADO".
+ */
 export function CertificateView({
-  user,
   course,
+  enrolledCourses = [],
+  onSelectCourse,
   completedLessonsCount,
   totalLessonsCount,
   onGoToCourse,
 }: CertificateViewProps) {
-  const [downloaded, setDownloaded] = useState(false);
-  const isAvailable =
+  // Verifica se o aluno completou todas as aulas
+  const isCompleted =
     totalLessonsCount > 0 && completedLessonsCount >= totalLessonsCount;
 
-  const studentName =
-    user?.displayName ||
-    (user?.email ? user.email.split("@")[0] : "Aluno");
+  // Verifica se o administrador cadastrou o arquivo do certificado
+  const hasCertificateFile = Boolean(course.certificateUrl);
 
   const handleDownload = () => {
-    setDownloaded(true);
-    // Simula o download / impressão do certificado
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Certificado de Conclusão - ${course.title}</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f8fafc; }
-            .cert-card { background: white; border: 8px double #ea580c; border-radius: 16px; padding: 48px; max-width: 800px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-            h1 { color: #0f172a; font-size: 28px; margin-bottom: 8px; }
-            h2 { color: #ea580c; font-size: 20px; font-weight: 600; margin-top: 0; }
-            p { color: #475569; font-size: 16px; line-height: 1.6; }
-            .student-name { font-size: 24px; font-weight: bold; color: #0f172a; margin: 24px 0 8px; border-bottom: 2px solid #ea580c; display: inline-block; padding: 0 24px 4px; }
-            .footer { margin-top: 40px; font-size: 13px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; }
-          </style>
-        </head>
-        <body>
-          <div class="cert-card">
-            <h2>VL AUTOMAÇÕES • FORMAÇÃO INDUSTRIAL</h2>
-            <h1>CERTIFICADO DE CONCLUSÃO</h1>
-            <p>Certificamos com distinção que</p>
-            <div class="student-name">${studentName}</div>
-            <p>concluiu com êxito todas as etapas teórico-práticas do curso de</p>
-            <h3 style="color: #0f172a; font-size: 18px; margin: 16px 0;">${course.title}</h3>
-            <p style="font-size: 14px;">Instrutor Responsável: ${course.instructor} • Carga Horária: 40 horas</p>
-            <div class="footer">
-              Autenticação digital emitida pela plataforma de treinamentos VL AUTOMAÇÕES em ${new Date().toLocaleDateString("pt-BR")}.
-            </div>
-          </div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    if (!course.certificateUrl) return;
+
+    // Dispara a abertura ou download do arquivo cadastrado pelo administrador
+    const link = document.createElement("a");
+    link.href = course.certificateUrl;
+    link.download =
+      course.certificateFileName || `certificado-${course.id}.pdf`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div id="vl-certificate-view" className="max-w-2xl mx-auto space-y-6">
-      {/* Topo do Certificado */}
-      <div className="space-y-1 text-center sm:text-left">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-          Seu certificado
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500">
-          Certificação profissional emitida pela VL AUTOMAÇÕES após a conclusão do treinamento.
-        </p>
-      </div>
-
-      {/* Card Principal */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 space-y-6 shadow-xs">
-        {/* Status */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-          <div>
-            <span className="text-xs font-semibold text-slate-400 block mb-1">
-              Status do certificado
-            </span>
-            <div className="flex items-center gap-2">
-              {isAvailable ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Disponível
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  Em andamento
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="text-left sm:text-right">
-            <span className="text-xs text-slate-400 block mb-1">Progresso</span>
-            <span className="text-sm font-bold text-slate-900">
-              {completedLessonsCount}/{totalLessonsCount} aulas concluídas
-            </span>
+    <div id="vl-certificate-page" className="max-w-2xl mx-auto space-y-6 py-4">
+      {/* Seletor de Cursos Matriculados (quando o aluno tiver mais de um) */}
+      {enrolledCourses.length > 1 && (
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2 px-1">
+            Selecione o Curso para o Certificado
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {enrolledCourses.map((c) => {
+              const isSelected = c.id === course.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onSelectCourse && onSelectCourse(c.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    isSelected
+                      ? "bg-[#ea580c] text-white shadow-xs"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>{c.title}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        {/* Informações do Aluno e Curso */}
-        <div className="space-y-4 text-xs sm:text-sm text-slate-600">
-          <div>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-              Aluno
-            </span>
-            <p className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">
-              {studentName}
-            </p>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-              Curso
-            </span>
-            <p className="font-semibold text-slate-900 mt-0.5">
-              {course.title}
-            </p>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Carga horária: 40 horas • Instrutor: {course.instructor}
-            </p>
-          </div>
+      {/* Cartão Principal do Certificado */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-10 shadow-xs text-center space-y-6">
+        {/* Ícone de Destaque */}
+        <div
+          className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${
+            isCompleted
+              ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+              : "bg-orange-50 text-[#ea580c] border-orange-200"
+          }`}
+        >
+          <Award className="w-8 h-8 stroke-[1.75]" />
         </div>
 
-        {/* Ação: Botão BAIXAR CERTIFICADO ou Orientação de Conclusão */}
-        <div className="pt-2">
-          {isAvailable ? (
+        {/* Título do Curso */}
+        <div className="space-y-1 max-w-lg mx-auto">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+            {course.title}
+          </span>
+        </div>
+
+        {/* CASO 1: Curso NÃO Concluído */}
+        {!isCompleted && (
+          <div className="space-y-5 max-w-md mx-auto">
+            <p className="text-base sm:text-lg font-bold text-slate-800">
+              Certificado disponível após a conclusão do curso.
+            </p>
+
             <button
-              id="btn-download-certificate"
               type="button"
-              onClick={handleDownload}
-              className="w-full py-3.5 px-6 bg-[#ea580c] hover:bg-[#c2410c] text-white text-sm font-bold rounded-xl shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              onClick={onGoToCourse}
+              className="inline-flex items-center justify-center gap-2 py-3 px-6 bg-slate-900 hover:bg-black text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
             >
-              <Download className="w-4 h-4" />
-              <span>BAIXAR CERTIFICADO</span>
+              <Clock className="w-4 h-4" />
+              <span>Continuar aulas do curso</span>
             </button>
-          ) : (
-            <div className="space-y-3">
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1">
-                <p className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-slate-400" />
-                  Certificado bloqueado
-                </p>
-                <p className="text-slate-500 leading-relaxed">
-                  Conclua todas as {totalLessonsCount} aulas e envie as atividades do curso para liberar a emissão do seu certificado oficial.
-                </p>
-              </div>
+          </div>
+        )}
 
+        {/* CASO 2: Curso 100% Concluído e Certificado Cadastrado pelo Administrador */}
+        {isCompleted && hasCertificateFile && (
+          <div className="space-y-5 max-w-md mx-auto">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 text-emerald-700 font-bold text-base sm:text-lg">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <span>✓ Curso concluído</span>
+              </div>
+              <p className="text-sm font-semibold text-slate-700">
+                Seu certificado está disponível.
+              </p>
+            </div>
+
+            <div>
               <button
                 type="button"
-                onClick={onGoToCourse}
-                className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+                onClick={handleDownload}
+                className="w-full sm:w-auto py-3.5 px-8 bg-[#ea580c] hover:bg-[#c2410c] text-white text-sm sm:text-base font-extrabold rounded-xl shadow-md flex items-center justify-center gap-2.5 transition-all cursor-pointer mx-auto"
               >
-                Continuar estudando
+                <Download className="w-4 h-4" />
+                <span>🏆 BAIXAR CERTIFICADO</span>
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* CASO 3: Curso 100% Concluído, mas Administrador ainda não cadastrou o arquivo */}
+        {isCompleted && !hasCertificateFile && (
+          <div className="space-y-3 max-w-md mx-auto">
+            <div className="inline-flex items-center gap-1.5 text-emerald-700 font-bold text-base sm:text-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <span>✓ Curso concluído</span>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed font-medium">
+              O certificado estará disponível assim que o arquivo for disponibilizado pelo administrador.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

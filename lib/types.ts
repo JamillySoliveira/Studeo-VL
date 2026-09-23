@@ -1,12 +1,14 @@
 /**
  * Tipos e interfaces TypeScript para a plataforma VL AUTOMAÇÕES.
  *
- * Estes modelos representam a estrutura das coleções do Firestore:
- * - users: dados do aluno e permissões de acesso
- * - courses: informações do curso
- * - modules: módulos organizados em ordem
- * - lessons: aulas de cada módulo com links do Google Drive e Google Forms
- * - progress: registro das aulas concluídas pelo aluno
+ * Arquitetura Direta:
+ * CURSO → AULAS
+ *
+ * Coleções do Firestore:
+ * - users: dados do aluno, permissões e cursos liberados (enrolledCourses)
+ * - courses: informações dos cursos cadastrados
+ * - lessons: aulas pertencentes diretamente ao curso através de courseId
+ * - progress: registro das aulas concluídas pelo aluno por curso
  */
 
 export interface UserProfile {
@@ -23,14 +25,14 @@ export interface UserProfile {
 export interface Lesson {
   id: string;
   courseId: string;
-  moduleId: string;
   title: string;
   description: string;
-  videoUrl: string;  // Link do vídeo no Google Drive
-  youtubeUrl?: string; // Opcional para retrocompatibilidade
-  formUrl: string;   // Link do Google Forms para atividade
+  videoUrl: string;  // Link do vídeo no YouTube ou Google Drive
+  formUrl: string;   // Link do Google Forms para atividade prática
   order: number;
   duration?: string; // Ex: "18 min"
+  youtubeUrl?: string; // Suporte e compatibilidade retroativa
+  moduleId?: string;   // Compatibilidade com dados legados
 }
 
 export interface Module {
@@ -49,16 +51,24 @@ export interface Course {
   description: string;
   category: string;
   instructor: string;
-  modules: Module[];
+  lessons: Lesson[];
   totalLessons: number;
   badge: string;
+  modules?: Module[]; // Compatibilidade retroativa
+  certificateUrl?: string;        // Arquivo de certificado (PDF ou link fornecido pelo admin)
+  certificateFileName?: string;   // Nome original do arquivo (ex: "certificado_rockwell.pdf")
+  certificateFileSize?: string;   // Tamanho formatado (ex: "320 KB")
+  certificateUploadedAt?: string; // Data ISO do envio do certificado
 }
 
 export interface UserProgress {
   userId: string;
   courseId: string;
   completedLessons: string[]; // IDs das aulas concluídas
+  completedForms?: string[];  // IDs das aulas cujos formulários Google Forms foram concluídos
   lastLessonId?: string;       // Última aula acessada
+  isCompleted?: boolean;       // Status de conclusão do curso (100% aulas E 100% formulários)
+  completedAt?: string;        // Data ISO em que os requisitos foram 100% atingidos
   updatedAt?: string;
 }
 

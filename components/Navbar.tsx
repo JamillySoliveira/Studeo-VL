@@ -25,6 +25,8 @@ export function Navbar({
         return "Início";
       case "course":
         return "Meus Cursos";
+      case "notices":
+        return "Avisos";
       case "lesson":
         return "Aula";
       case "progress":
@@ -32,7 +34,9 @@ export function Navbar({
       case "certificate":
         return "Certificado";
       case "profile":
-        return "Perfil";
+        return "Meu Perfil";
+      case "help":
+        return "Ajuda";
       case "admin":
         return "Painel Admin";
       default:

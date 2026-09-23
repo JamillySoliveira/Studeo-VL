@@ -1,3 +1,14 @@
+/**
+ * Serviço de Cursos, Aulas e Permissões de Usuários no Cloud Firestore
+ *
+ * Arquitetura Simplificada:
+ * Curso └── Aulas (cada aula associada diretamente através de courseId)
+ *
+ * Controle de Acesso:
+ * - accessEnabled: controla se o usuário pode acessar a plataforma
+ * - enrolledCourses: lista de IDs de cursos liberados para o aluno (ex: ["rockwell-basico"])
+ */
+
 import {
   db,
   doc,
@@ -10,14 +21,52 @@ import {
 } from "./firebase";
 
 import { Course, Lesson, Module, UserProfile } from "./types";
-import { INITIAL_COURSE } from "./courseData";
+import {
+  AVAILABLE_COURSES,
+  INITIAL_COURSE_ID,
+  INITIAL_COURSE,
+} from "./courseData";
 
 const STORAGE_LESSONS_OVERRIDE_KEY = "vl_lessons_custom_urls";
+const STORAGE_COURSE_CERT_PREFIX = "vl_course_cert_";
 
 /**
- * Lê alterações locais das aulas.
- * Esse cache ajuda a plataforma a continuar mostrando os links
- * mesmo quando o Firestore não estiver disponível temporariamente.
+ * Lê certificado salvo localmente no cache.
+ */
+function getLocalCourseCertificate(courseId: string): Partial<Course> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(`${STORAGE_COURSE_CERT_PREFIX}${courseId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Salva ou remove o certificado no cache local.
+ */
+function setLocalCourseCertificate(
+  courseId: string,
+  data: Partial<Course> | null
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!data) {
+      localStorage.removeItem(`${STORAGE_COURSE_CERT_PREFIX}${courseId}`);
+    } else {
+      localStorage.setItem(
+        `${STORAGE_COURSE_CERT_PREFIX}${courseId}`,
+        JSON.stringify(data)
+      );
+    }
+  } catch (error) {
+    console.warn("Erro ao salvar cache de certificado:", error);
+  }
+}
+
+/**
+ * Lê alterações locais das aulas (cache para resiliência).
  */
 function getLocalLessonsOverrides(): Record<string, Partial<Lesson>> {
   if (typeof window === "undefined") return {};
@@ -57,275 +106,318 @@ function setLocalLessonsOverride(
 }
 
 /**
- * Busca o curso completo.
- *
- * Ordem utilizada:
- * 1. Começa com o curso padrão de courseData.ts.
- * 2. Procura a estrutura de módulos no Firestore.
- * 3. Procura as aulas no Firestore.
- * 4. Aplica os links/alterações locais das aulas.
- *
- * Dessa forma, novos módulos e novas aulas criados pelo administrador
- * continuam aparecendo depois de atualizar a página.
+ * Normaliza o ID de um curso para compatibilidade com dados legados.
+ */
+export function normalizeCourseId(courseId?: string): string {
+  if (!courseId) return INITIAL_COURSE_ID;
+  if (courseId === "rockwell-controle-analogico-supervisorio") {
+    return "rockwell-basico";
+  }
+  return courseId;
+}
+
+/**
+ * Retorna os IDs dos cursos aos quais o usuário tem acesso a partir de enrolledCourses.
+ * 
+ * Regra:
+ * - accessEnabled: determina se o usuário pode utilizar a plataforma.
+ * - enrolledCourses: determina quais cursos o usuário possui acesso (fonte da verdade).
+ * - Administradores (role === "admin") possuem acesso administrativo e liberado a todos os cursos.
+ */
+export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
+  if (!user) return [];
+
+  // Se o usuário estiver bloqueado pelo accessEnabled, não acessa nenhum curso
+  if (user.accessEnabled === false) return [];
+
+  // Administradores possuem acesso total a todos os cursos através do role
+  if (user.role === "admin") {
+    return AVAILABLE_COURSES.map((c) => c.id);
+  }
+
+  const enrolled = Array.isArray(user.enrolledCourses) ? user.enrolledCourses : [];
+  const accessible: string[] = [];
+
+  // Validação estrita por curso em enrolledCourses (com compatibilidade para o ID legado)
+  if (
+    enrolled.includes("rockwell-basico") ||
+    enrolled.includes("rockwell-controle-analogico-supervisorio")
+  ) {
+    accessible.push("rockwell-basico");
+  }
+
+  if (enrolled.includes("rockwell-intermediario")) {
+    accessible.push("rockwell-intermediario");
+  }
+
+  if (enrolled.includes("rockwell-avancado")) {
+    accessible.push("rockwell-avancado");
+  }
+
+  return accessible;
+}
+
+/**
+ * Verifica se o usuário possui acesso ao curso específico através do seu role e de enrolledCourses.
+ * 
+ * - Se accessEnabled === false, o acesso a qualquer curso é negado.
+ * - Se role === "admin", acesso concedido.
+ * - Se role !== "admin", verifica se o courseId está estritamente presente nos cursos de enrolledCourses.
+ */
+export function checkUserCourseAccess(
+  user: UserProfile | null,
+  courseId: string = INITIAL_COURSE_ID
+): boolean {
+  if (!user) return false;
+  if (user.accessEnabled === false) return false;
+  if (user.role === "admin") return true;
+
+  const effectiveCourseId = normalizeCourseId(courseId);
+  const accessibleIds = getUserAccessibleCourseIds(user);
+  return accessibleIds.includes(effectiveCourseId);
+}
+
+/**
+ * Busca os dados de um curso com suas aulas diretas (sem módulos na estrutura principal).
  */
 export async function getCourseData(
-  courseId: string = INITIAL_COURSE.id
+  courseId: string = INITIAL_COURSE_ID
 ): Promise<Course> {
-  const baseCourse: Course = JSON.parse(JSON.stringify(INITIAL_COURSE));
+  const effectiveCourseId = normalizeCourseId(courseId);
+
+  // Localiza a base estática do curso
+  const baseFound = AVAILABLE_COURSES.find((c) => c.id === effectiveCourseId);
+  const baseCourse: Course = baseFound
+    ? JSON.parse(JSON.stringify(baseFound))
+    : JSON.parse(JSON.stringify(INITIAL_COURSE));
 
   const localOverrides = getLocalLessonsOverrides();
 
   try {
-    // ---------------------------------------------------------
-    // 1. Busca os dados gerais do curso no Firestore
-    // ---------------------------------------------------------
-    let firestoreCourse: Partial<Course> = {};
-
+    // 1. Busca dados do curso no Firestore (se houver customizações)
     try {
-      const courseRef = doc(db, "courses", courseId);
+      const courseRef = doc(db, "courses", effectiveCourseId);
       const courseSnapshot = await getDoc(courseRef);
 
       if (courseSnapshot.exists()) {
-        firestoreCourse = courseSnapshot.data() as Partial<Course>;
+        const firestoreCourse = courseSnapshot.data() as Partial<Course>;
+        if (firestoreCourse.title && firestoreCourse.title !== "Programação Rockwell - Básico") {
+          baseCourse.title = firestoreCourse.title;
+        }
+        if (firestoreCourse.subtitle) {
+          baseCourse.subtitle = firestoreCourse.subtitle;
+        }
+        if (firestoreCourse.description) {
+          baseCourse.description = firestoreCourse.description;
+        }
+        if (firestoreCourse.category && firestoreCourse.category !== "Automação Industrial & CLPs") {
+          baseCourse.category = firestoreCourse.category;
+        }
+        if (firestoreCourse.instructor) {
+          baseCourse.instructor = firestoreCourse.instructor;
+        }
+        if (firestoreCourse.badge && !["Certificação Profissional", "Especialização Técnica", "Nível Especialista"].includes(firestoreCourse.badge)) {
+          baseCourse.badge = firestoreCourse.badge;
+        }
+        baseCourse.certificateUrl = firestoreCourse.certificateUrl || undefined;
+        baseCourse.certificateFileName = firestoreCourse.certificateFileName || undefined;
+        baseCourse.certificateFileSize = firestoreCourse.certificateFileSize || undefined;
+        baseCourse.certificateUploadedAt = firestoreCourse.certificateUploadedAt || undefined;
+      }
+
+      // Se não veio do Firestore, tenta recuperar do cache local
+      if (!baseCourse.certificateUrl) {
+        const localCert = getLocalCourseCertificate(effectiveCourseId);
+        if (localCert?.certificateUrl) {
+          baseCourse.certificateUrl = localCert.certificateUrl;
+          baseCourse.certificateFileName = localCert.certificateFileName;
+          baseCourse.certificateFileSize = localCert.certificateFileSize;
+          baseCourse.certificateUploadedAt = localCert.certificateUploadedAt;
+        }
       }
     } catch (error) {
-      console.warn(
-        "Aviso ao buscar dados gerais do curso no Firestore:",
-        error
-      );
+      console.warn("Aviso ao buscar dados gerais do curso no Firestore:", error);
+      const localCert = getLocalCourseCertificate(effectiveCourseId);
+      if (localCert?.certificateUrl) {
+        baseCourse.certificateUrl = localCert.certificateUrl;
+        baseCourse.certificateFileName = localCert.certificateFileName;
+        baseCourse.certificateFileSize = localCert.certificateFileSize;
+        baseCourse.certificateUploadedAt = localCert.certificateUploadedAt;
+      }
     }
 
-    // ---------------------------------------------------------
-    // 2. Busca os módulos
-    // ---------------------------------------------------------
-    let firestoreModules: Module[] = [];
-
-    try {
-      const modulesSnapshot = await getDocs(collection(db, "modules"));
-
-      firestoreModules = modulesSnapshot.docs
-        .map((item) => item.data() as Module)
-        .filter((module) => module.courseId === courseId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-    } catch (error) {
-      console.warn(
-        "Aviso ao buscar módulos no Firestore:",
-        error
-      );
-    }
-
-    // ---------------------------------------------------------
-    // 3. Busca todas as aulas
-    // ---------------------------------------------------------
+    // 2. Busca as aulas no Firestore pertencentes ao courseId
     let firestoreLessons: Lesson[] = [];
-
     try {
       const lessonsSnapshot = await getDocs(collection(db, "lessons"));
 
       firestoreLessons = lessonsSnapshot.docs
-        .map((item) => item.data() as Lesson)
-        .filter((lesson) => lesson.courseId === courseId);
+        .map((item) => {
+          const data = item.data() as Lesson;
+          return {
+            ...data,
+            id: item.id || data.id,
+            courseId: normalizeCourseId(data.courseId),
+            videoUrl: data.videoUrl || data.youtubeUrl || "",
+            youtubeUrl: data.youtubeUrl || data.videoUrl || "",
+            formUrl: data.formUrl || "",
+          };
+        })
+        .filter((lesson) => {
+          const lesCourseId = normalizeCourseId(lesson.courseId);
+          return lesCourseId === effectiveCourseId;
+        });
+
+      // Preserva aulas que possam ter sido salvas na estrutura legada de módulos no Firestore
+      try {
+        const modulesSnapshot = await getDocs(collection(db, "modules"));
+        modulesSnapshot.docs.forEach((mDoc) => {
+          const mData = mDoc.data();
+          const mCourseId = normalizeCourseId(mData.courseId);
+          if (mCourseId === effectiveCourseId && Array.isArray(mData.lessons)) {
+            mData.lessons.forEach((l: Lesson) => {
+              if (l && l.id) {
+                firestoreLessons.push({
+                  ...l,
+                  courseId: effectiveCourseId,
+                  videoUrl: l.videoUrl || l.youtubeUrl || "",
+                  youtubeUrl: l.youtubeUrl || l.videoUrl || "",
+                  formUrl: l.formUrl || "",
+                });
+              }
+            });
+          }
+        });
+      } catch {
+        // Sem impacto se a coleção de módulos não estiver presente
+      }
     } catch (error) {
-      console.warn(
-        "Aviso ao buscar aulas no Firestore:",
-        error
-      );
+      console.warn("Aviso ao buscar aulas no Firestore:", error);
     }
 
-    // ---------------------------------------------------------
-    // 4. Monta o mapa das aulas do Firestore
-    // ---------------------------------------------------------
-    const firestoreLessonsMap: Record<string, Partial<Lesson>> = {};
+    // 3. Monta o mapa das aulas (Base + Firestore + Cache Local)
+    const lessonsMap = new Map<string, Lesson>();
 
-    firestoreLessons.forEach((lesson) => {
-      if (lesson.id) {
-        firestoreLessonsMap[lesson.id] = lesson;
-      }
+    // Aulas base padrão do curso
+    baseCourse.lessons.forEach((l) => {
+      lessonsMap.set(l.id, {
+        ...l,
+        courseId: effectiveCourseId,
+      });
     });
 
-    // ---------------------------------------------------------
-    // 5. Se existem módulos no Firestore, eles passam a ser
-    //    a estrutura principal do curso.
-    //
-    //    Se ainda não existem módulos no Firestore, usamos
-    //    os módulos originais de INITIAL_COURSE.
-    // ---------------------------------------------------------
-    const sourceModules =
-      firestoreModules.length > 0
-        ? firestoreModules
-        : baseCourse.modules;
+    // Aulas salvas no Firestore (ignora IDs de seeds legadas como 'aula-1-1' no curso básico)
+    firestoreLessons.forEach((l) => {
+      if (
+        effectiveCourseId === "rockwell-basico" &&
+        (l.id.startsWith("aula-1-") ||
+          l.id.startsWith("aula-2-") ||
+          l.id.startsWith("aula-3-") ||
+          l.id.startsWith("aula-4-"))
+      ) {
+        return;
+      }
+      const existing = lessonsMap.get(l.id);
+      lessonsMap.set(l.id, {
+        ...(existing || {}),
+        ...l,
+        courseId: effectiveCourseId,
+      });
+    });
 
-    const finalModules: Module[] = sourceModules
-      .map((module) => {
-        // Aulas padrão pertencentes a este módulo
-        const defaultLessons = baseCourse.modules
-          .flatMap((item) => item.lessons)
-          .filter((lesson) => lesson.moduleId === module.id);
-
-        // Aulas salvas no Firestore pertencentes a este módulo
-        const savedLessons = firestoreLessons.filter(
-          (lesson) => lesson.moduleId === module.id
-        );
-
-        // Junta aulas padrão + aulas novas do Firestore.
-        const lessonsMap = new Map<string, Lesson>();
-
-        defaultLessons.forEach((lesson) => {
-          lessonsMap.set(lesson.id, lesson);
-        });
-
-        savedLessons.forEach((lesson) => {
-          const original = lessonsMap.get(lesson.id);
-
-          lessonsMap.set(lesson.id, {
-            ...(original || {}),
-            ...lesson,
-          });
-        });
-
-        // Se o módulo veio do Firestore, suas aulas também
-        // podem estar dentro do documento do módulo.
-        if (module.lessons?.length) {
-          module.lessons.forEach((lesson) => {
-            const original = lessonsMap.get(lesson.id);
-
-            lessonsMap.set(lesson.id, {
-              ...(original || {}),
-              ...lesson,
-            });
-          });
-        }
-
-        const lessons = Array.from(lessonsMap.values())
-          .map((lesson) => {
-            const fromFirestore =
-              firestoreLessonsMap[lesson.id] || {};
-
-            const fromLocal =
-              localOverrides[lesson.id] || {};
-
-            return {
-              ...lesson,
-              ...fromFirestore,
-              ...fromLocal,
-              courseId,
-              moduleId: module.id,
-              videoUrl:
-                fromLocal.videoUrl ??
-                fromFirestore.videoUrl ??
-                lesson.videoUrl ??
-                "",
-            };
-          })
-          .sort((a, b) => (a.order || 0) - (b.order || 0));
-
+    // Aplica overrides locais e normaliza
+    const mergedLessons: Lesson[] = Array.from(lessonsMap.values())
+      .map((lesson) => {
+        const local = localOverrides[lesson.id] || {};
         return {
-          ...module,
-          courseId,
-          lessons,
+          ...lesson,
+          ...local,
+          courseId: effectiveCourseId,
+          videoUrl: local.videoUrl ?? lesson.videoUrl ?? "",
+          formUrl: local.formUrl ?? lesson.formUrl ?? "",
+          title: local.title ?? lesson.title ?? "",
+          duration: local.duration ?? lesson.duration ?? "",
         };
       })
       .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    // ---------------------------------------------------------
-    // 6. Atualiza o curso final
-    // ---------------------------------------------------------
-    baseCourse.title =
-      firestoreCourse.title || baseCourse.title;
+    baseCourse.lessons = mergedLessons;
+    baseCourse.totalLessons = mergedLessons.length;
 
-    baseCourse.subtitle =
-      firestoreCourse.subtitle || baseCourse.subtitle;
-
-    baseCourse.description =
-      firestoreCourse.description || baseCourse.description;
-
-    baseCourse.category =
-      firestoreCourse.category || baseCourse.category;
-
-    baseCourse.instructor =
-      firestoreCourse.instructor || baseCourse.instructor;
-
-    baseCourse.badge =
-      firestoreCourse.badge || baseCourse.badge;
-
-    baseCourse.modules = finalModules;
-
-    baseCourse.totalLessons = finalModules.reduce(
-      (total, module) => total + module.lessons.length,
-      0
-    );
+    // Mantém modules preenchido para compatibilidade com código legado
+    baseCourse.modules = [
+      {
+        id: "main",
+        courseId: effectiveCourseId,
+        title: "Aulas",
+        order: 1,
+        lessons: mergedLessons,
+      },
+    ];
 
     return baseCourse;
   } catch (error) {
-    console.warn(
-      "Aviso ao carregar curso. Utilizando dados padrão e cache local:",
-      error
-    );
+    console.warn("Aviso ao carregar curso. Utilizando dados padrão:", error);
 
-    // Mesmo que alguma leitura falhe, mantém as aulas padrão
-    // com os links que estiverem no cache local.
-    baseCourse.modules = baseCourse.modules.map((module) => ({
-      ...module,
-      lessons: module.lessons.map((lesson) => {
-        const local = localOverrides[lesson.id] || {};
+    baseCourse.lessons = baseCourse.lessons.map((lesson) => {
+      const local = localOverrides[lesson.id] || {};
+      return {
+        ...lesson,
+        ...local,
+        courseId: effectiveCourseId,
+        videoUrl: local.videoUrl ?? lesson.videoUrl ?? "",
+      };
+    });
 
-        return {
-          ...lesson,
-          ...local,
-          videoUrl: local.videoUrl ?? lesson.videoUrl ?? "",
-        };
-      }),
-    }));
-
-    baseCourse.totalLessons = baseCourse.modules.reduce(
-      (total, module) => total + module.lessons.length,
-      0
-    );
-
+    baseCourse.totalLessons = baseCourse.lessons.length;
     return baseCourse;
   }
 }
 
 /**
- * Nome usado pelo restante da aplicação.
- * Mantemos esse alias para não quebrar o page.tsx.
+ * Retorna todos os 3 cursos com suas respectivas aulas.
+ */
+export async function getAllCourses(): Promise<Course[]> {
+  const promises = AVAILABLE_COURSES.map((c) => getCourseData(c.id));
+  return Promise.all(promises);
+}
+
+/**
+ * Alias mantido para compatibilidade.
  */
 export const getCourseWithOverrides = getCourseData;
 
 /**
- * Salva somente o link do vídeo de uma aula.
+ * Salva o link do vídeo de uma aula.
  */
 export async function saveLessonVideoUrl(
   lessonId: string,
   videoUrl: string,
-  courseId: string = INITIAL_COURSE.id,
-  moduleId?: string
+  courseId: string = INITIAL_COURSE_ID
 ): Promise<void> {
   const cleanUrl = videoUrl.trim();
+  const effectiveCourseId = normalizeCourseId(courseId);
 
   setLocalLessonsOverride(lessonId, {
     videoUrl: cleanUrl,
+    youtubeUrl: cleanUrl,
   });
 
   try {
     const lessonRef = doc(db, "lessons", lessonId);
-
     await setDoc(
       lessonRef,
       {
         id: lessonId,
-        courseId,
-        moduleId: moduleId || "",
+        courseId: effectiveCourseId,
         videoUrl: cleanUrl,
+        youtubeUrl: cleanUrl,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
   } catch (error) {
-    console.warn(
-      "Aviso: Link salvo localmente, mas não sincronizado com o Firestore:",
-      error
-    );
+    console.warn("Aviso ao salvar link de vídeo no Firestore:", error);
   }
 }
 
@@ -336,198 +428,62 @@ export async function updateLessonDetails(
   lessonId: string,
   data: Partial<Lesson>
 ): Promise<void> {
-  setLocalLessonsOverride(lessonId, data);
+  const syncedData = {
+    ...data,
+    ...(data.videoUrl ? { youtubeUrl: data.videoUrl } : {}),
+    ...(data.youtubeUrl ? { videoUrl: data.youtubeUrl } : {}),
+  };
+
+  setLocalLessonsOverride(lessonId, syncedData);
 
   try {
     const lessonRef = doc(db, "lessons", lessonId);
-
     await setDoc(
       lessonRef,
       {
-        ...data,
+        ...syncedData,
         id: lessonId,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
   } catch (error) {
-    console.warn(
-      "Aviso ao salvar detalhes da aula no Firestore:",
-      error
-    );
-  }
-}
-
-/**
- * Verifica se o usuário possui acesso ao curso.
- */
-export function checkUserCourseAccess(
-  user: UserProfile | null,
-  courseId: string = INITIAL_COURSE.id
-): boolean {
-  if (!user) return false;
-
-  // Administradores possuem acesso ao curso.
-  if (user.role === "admin") {
-    return true;
-  }
-
-  // Usuário bloqueado não possui acesso.
-  if (user.accessEnabled === false) {
-    return false;
-  }
-
-  // Se existe uma lista de cursos, verifica se o curso está nela.
-  if (
-    user.enrolledCourses &&
-    user.enrolledCourses.length > 0
-  ) {
-    return user.enrolledCourses.includes(courseId);
-  }
-
-  // Mantém o comportamento anterior para usuários
-  // que ainda não possuem enrolledCourses.
-  return true;
-}
-
-/**
- * Busca todos os usuários cadastrados.
- */
-export async function fetchAllUsers(): Promise<UserProfile[]> {
-  try {
-    const usersCol = collection(db, "users");
-    const snapshot = await getDocs(usersCol);
-
-    const users: UserProfile[] = [];
-
-    snapshot.forEach((item) => {
-      users.push(item.data() as UserProfile);
-    });
-
-    return users;
-  } catch (error) {
-    console.warn(
-      "Aviso ao buscar usuários no Firestore:",
-      error
-    );
-
-    return [];
-  }
-}
-
-/**
- * Bloqueia ou libera o acesso de um usuário.
- */
-export async function toggleUserAccess(
-  userId: string,
-  accessEnabled: boolean
-): Promise<void> {
-  try {
-    const userRef = doc(db, "users", userId);
-
-    await updateDoc(userRef, {
-      accessEnabled,
-      updatedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error(
-      "Erro ao atualizar status de acesso do usuário:",
-      error
-    );
-
-    throw error;
+    console.warn("Aviso ao salvar detalhes da aula no Firestore:", error);
   }
 }
 
 /* ============================================================
-   CRUD DE MÓDULOS
+   CRUD DE AULAS (Curso └── Aulas)
    ============================================================ */
 
 /**
- * Cria um novo módulo.
+ * Cria uma nova aula diretamente associada a um curso.
  */
-export async function addModule(
-  courseId: string,
-  module: Module
-): Promise<void> {
-  const moduleRef = doc(db, "modules", module.id);
-
-  await setDoc(moduleRef, {
-    ...module,
-    courseId,
-    lessons: [],
-    updatedAt: new Date().toISOString(),
-  });
-}
-
-/**
- * Atualiza um módulo existente.
- */
-export async function updateModule(
-  moduleId: string,
-  data: Partial<Module>
-): Promise<void> {
-  const moduleRef = doc(db, "modules", moduleId);
-
-  await setDoc(
-    moduleRef,
-    {
-      ...data,
-      id: moduleId,
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
-}
-
-/**
- * Exclui um módulo e também todas as aulas pertencentes a ele.
- */
-export async function deleteModule(
-  moduleId: string
-): Promise<void> {
-  // Primeiro busca as aulas para excluir junto com o módulo.
-  const lessonsSnapshot = await getDocs(
-    collection(db, "lessons")
-  );
-
-  const moduleLessons = lessonsSnapshot.docs.filter((item) => {
-    const lesson = item.data() as Lesson;
-    return lesson.moduleId === moduleId;
-  });
-
-  for (const lessonDoc of moduleLessons) {
-    await deleteDoc(lessonDoc.ref);
-  }
-
-  // Depois exclui o módulo.
-  const moduleRef = doc(db, "modules", moduleId);
-  await deleteDoc(moduleRef);
-}
-
-/* ============================================================
-   CRUD DE AULAS
-   ============================================================ */
-
-/**
- * Cria uma nova aula.
- */
-export async function addLesson(
-  lesson: Lesson
-): Promise<void> {
+export async function addLesson(lesson: Lesson): Promise<void> {
+  const effectiveCourseId = normalizeCourseId(lesson.courseId);
   const lessonRef = doc(db, "lessons", lesson.id);
 
-  await setDoc(lessonRef, {
+  const cleanVideo = (lesson.videoUrl || lesson.youtubeUrl || "").trim();
+
+  const payload: Lesson = {
     ...lesson,
+    courseId: effectiveCourseId,
+    videoUrl: cleanVideo,
+    youtubeUrl: cleanVideo,
+  };
+
+  await setDoc(lessonRef, {
+    ...payload,
     updatedAt: new Date().toISOString(),
   });
 
-  // Também salva no cache local para manter o link disponível.
   setLocalLessonsOverride(lesson.id, {
-    videoUrl: lesson.videoUrl,
+    videoUrl: cleanVideo,
+    youtubeUrl: cleanVideo,
     title: lesson.title,
     duration: lesson.duration,
     formUrl: lesson.formUrl,
+    order: lesson.order,
   });
 }
 
@@ -540,60 +496,218 @@ export async function updateLesson(
 ): Promise<void> {
   const lessonRef = doc(db, "lessons", lessonId);
 
+  const syncedData = {
+    ...data,
+    ...(data.videoUrl ? { youtubeUrl: data.videoUrl } : {}),
+    ...(data.youtubeUrl ? { videoUrl: data.youtubeUrl } : {}),
+  };
+
   await setDoc(
     lessonRef,
     {
-      ...data,
+      ...syncedData,
       id: lessonId,
       updatedAt: new Date().toISOString(),
     },
     { merge: true }
   );
 
-  setLocalLessonsOverride(lessonId, data);
+  setLocalLessonsOverride(lessonId, syncedData);
 }
 
 /**
  * Exclui uma aula.
  */
-export async function deleteLesson(
-  lessonId: string
-): Promise<void> {
+export async function deleteLesson(lessonId: string): Promise<void> {
   const lessonRef = doc(db, "lessons", lessonId);
-
   await deleteDoc(lessonRef);
 
-  // Remove a aula do cache local.
   if (typeof window !== "undefined") {
     try {
       const current = getLocalLessonsOverrides();
       delete current[lessonId];
-
       localStorage.setItem(
         STORAGE_LESSONS_OVERRIDE_KEY,
         JSON.stringify(current)
       );
     } catch (error) {
-      console.warn(
-        "Erro ao remover aula do cache local:",
-        error
-      );
+      console.warn("Erro ao remover aula do cache local:", error);
     }
   }
 }
 
 /**
- * Salva a estrutura completa do curso.
- *
- * Essa função é útil quando futuramente quisermos salvar
- * várias alterações de uma vez.
+ * Atualiza a ordem de uma lista de aulas.
  */
-export async function saveCourseStructure(
-  course: Course
+export async function updateLessonsOrder(
+  orderedLessons: { id: string; order: number }[]
 ): Promise<void> {
-  // Salva os dados gerais do curso.
-  const courseRef = doc(db, "courses", course.id);
+  for (const item of orderedLessons) {
+    await updateLesson(item.id, { order: item.order });
+  }
+}
 
+/* ============================================================
+   GESTÃO DE CERTIFICADOS POR CURSO
+   ============================================================ */
+
+/**
+ * Salva o arquivo de certificado cadastrado pelo administrador para determinado curso.
+ * Persiste no Firestore na coleção 'courses' e no cache local.
+ */
+export async function saveCourseCertificate(
+  courseId: string,
+  certData: {
+    certificateUrl: string;
+    certificateFileName: string;
+    certificateFileSize?: string;
+  }
+): Promise<void> {
+  const effectiveCourseId = normalizeCourseId(courseId);
+  const payload = {
+    certificateUrl: certData.certificateUrl,
+    certificateFileName: certData.certificateFileName,
+    certificateFileSize: certData.certificateFileSize || "",
+    certificateUploadedAt: new Date().toISOString(),
+  };
+
+  // Salva no cache local para resiliência imediata
+  setLocalCourseCertificate(effectiveCourseId, payload);
+
+  try {
+    const courseRef = doc(db, "courses", effectiveCourseId);
+    await setDoc(courseRef, payload, { merge: true });
+  } catch (error) {
+    console.warn("Aviso ao salvar certificado no Firestore:", error);
+  }
+}
+
+/**
+ * Remove o arquivo de certificado vinculado ao curso.
+ */
+export async function removeCourseCertificate(courseId: string): Promise<void> {
+  const effectiveCourseId = normalizeCourseId(courseId);
+
+  // Limpa cache local
+  setLocalCourseCertificate(effectiveCourseId, null);
+
+  try {
+    const courseRef = doc(db, "courses", effectiveCourseId);
+    await setDoc(
+      courseRef,
+      {
+        certificateUrl: "",
+        certificateFileName: "",
+        certificateFileSize: "",
+        certificateUploadedAt: "",
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.warn("Aviso ao remover certificado do Firestore:", error);
+  }
+}
+
+/* ============================================================
+   GESTÃO DE USUÁRIOS E PERMISSÕES
+   ============================================================ */
+
+/**
+ * Busca todos os usuários cadastrados.
+ */
+export async function fetchAllUsers(): Promise<UserProfile[]> {
+  try {
+    const usersCol = collection(db, "users");
+    const snapshot = await getDocs(usersCol);
+
+    const users: UserProfile[] = [];
+    snapshot.forEach((item) => {
+      users.push(item.data() as UserProfile);
+    });
+
+    return users;
+  } catch (error) {
+    console.warn("Aviso ao buscar usuários no Firestore:", error);
+    return [];
+  }
+}
+
+/**
+ * Bloqueia ou libera o acesso de um usuário à plataforma (accessEnabled).
+ */
+export async function toggleUserAccess(
+  userId: string,
+  accessEnabled: boolean
+): Promise<void> {
+  try {
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      accessEnabled,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar status de acesso do usuário:", error);
+    throw error;
+  }
+}
+
+/**
+ * Atualiza exclusivamente a lista de cursos matriculados do usuário (enrolledCourses).
+ * Não mistura com accessEnabled.
+ */
+export async function updateUserEnrolledCourses(
+  userId: string,
+  enrolledCourses: string[]
+): Promise<void> {
+  try {
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      enrolledCourses,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar cursos matriculados do usuário:", error);
+    throw error;
+  }
+}
+
+/* ============================================================
+   FUNÇÕES LEGADAS DE MÓDULOS (Mantidas para compatibilidade)
+   ============================================================ */
+
+export async function addModule(courseId: string, module: Module): Promise<void> {
+  const moduleRef = doc(db, "modules", module.id);
+  await setDoc(moduleRef, {
+    ...module,
+    courseId,
+    lessons: [],
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function updateModule(
+  moduleId: string,
+  data: Partial<Module>
+): Promise<void> {
+  const moduleRef = doc(db, "modules", moduleId);
+  await setDoc(
+    moduleRef,
+    {
+      ...data,
+      id: moduleId,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+}
+
+export async function deleteModule(moduleId: string): Promise<void> {
+  const moduleRef = doc(db, "modules", moduleId);
+  await deleteDoc(moduleRef);
+}
+
+export async function saveCourseStructure(course: Course): Promise<void> {
+  const courseRef = doc(db, "courses", course.id);
   await setDoc(
     courseRef,
     {
@@ -609,38 +723,4 @@ export async function saveCourseStructure(
     },
     { merge: true }
   );
-
-  // Salva cada módulo.
-  for (const module of course.modules) {
-    const moduleRef = doc(db, "modules", module.id);
-
-    await setDoc(
-      moduleRef,
-      {
-        id: module.id,
-        courseId: course.id,
-        title: module.title,
-        description: module.description || "",
-        order: module.order,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-
-    // Salva cada aula do módulo.
-    for (const lesson of module.lessons) {
-      const lessonRef = doc(db, "lessons", lesson.id);
-
-      await setDoc(
-        lessonRef,
-        {
-          ...lesson,
-          courseId: course.id,
-          moduleId: module.id,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
-    }
-  }
 }

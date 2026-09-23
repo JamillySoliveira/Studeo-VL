@@ -34,12 +34,25 @@ import {
 // Importa as configurações geradas automaticamente pelo ambiente
 import firebaseConfigJson from "../firebase-applet-config.json";
 
+// Tratamento e garantia do domínio de autenticação e identificação do projeto Firebase "studeo-vl"
+// Assegura que em qualquer ambiente (desenvolvimento ou publicado em studeo-vl.ai.studio),
+// o authDomain utilize confiavelmente o domínio oficial do projeto: "studeo-vl.firebaseapp.com"
+const resolvedAuthDomain =
+  process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ||
+  firebaseConfigJson.authDomain ||
+  "studeo-vl.firebaseapp.com";
+
+const resolvedProjectId =
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+  firebaseConfigJson.projectId ||
+  "studeo-vl";
+
 // Dados de configuração da aplicação no Firebase
 const firebaseConfig = {
   apiKey: firebaseConfigJson.apiKey,
-  authDomain: firebaseConfigJson.authDomain,
-  projectId: firebaseConfigJson.projectId,
-  storageBucket: firebaseConfigJson.storageBucket,
+  authDomain: resolvedAuthDomain,
+  projectId: resolvedProjectId,
+  storageBucket: firebaseConfigJson.storageBucket || `${resolvedProjectId}.firebasestorage.app`,
   messagingSenderId: firebaseConfigJson.messagingSenderId,
   appId: firebaseConfigJson.appId,
 };

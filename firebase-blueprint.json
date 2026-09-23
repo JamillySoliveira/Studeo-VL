@@ -43,19 +43,20 @@
     },
     "lessons": {
       "title": "lessons",
-      "description": "Aulas do curso com links do Google Drive e Google Forms",
+      "description": "Aulas do curso com links do YouTube/Google Drive e Google Forms",
       "type": "object",
       "properties": {
         "courseId": { "type": "string" },
-        "moduleId": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "videoUrl": { "type": "string" },
+        "youtubeUrl": { "type": "string" },
         "formUrl": { "type": "string" },
         "order": { "type": "number" },
-        "duration": { "type": "string" }
+        "duration": { "type": "string" },
+        "moduleId": { "type": "string" }
       },
-      "required": ["courseId", "moduleId", "title", "order"]
+      "required": ["courseId", "title", "order"]
     },
     "progress": {
       "title": "progress",

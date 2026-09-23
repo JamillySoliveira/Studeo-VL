@@ -1,19 +1,23 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import {
   Check,
   Circle,
   Play,
   Clock,
-  ChevronDown,
-  ChevronUp,
   Lock,
+  FileSpreadsheet,
+  BookOpen,
+  MessageCircle,
 } from "lucide-react";
 import { Course, Lesson } from "@/lib/types";
+import { getCourseWhatsAppUrl } from "@/lib/constants";
 
 interface CourseViewProps {
   course: Course;
+  enrolledCourses?: Course[];
+  onSelectCourse?: (courseId: string) => void;
   completedLessons: string[];
   onSelectLesson: (lesson: Lesson) => void;
   onToggleComplete: (lessonId: string) => void;
@@ -22,87 +26,112 @@ interface CourseViewProps {
 
 export function CourseView({
   course,
+  enrolledCourses = [],
+  onSelectCourse,
   completedLessons,
   onSelectLesson,
   onToggleComplete,
   hasAccess = true,
 }: CourseViewProps) {
-  // Identifica todas as aulas em ordem linear
-  const allLessons: Lesson[] = [];
-  course.modules.forEach((m) => m.lessons.forEach((l) => allLessons.push(l)));
+  // Se o aluno NÃO possuir acesso a este curso, exibe a tela de bloqueio com botão para WhatsApp
+  // Conforme requisito: não mostrar as aulas do curso bloqueado nem permitir acessar sua página interna.
+  if (!hasAccess) {
+    return (
+      <div id="vl-course-locked-view" className="max-w-2xl mx-auto py-8 sm:py-12 px-4 text-center">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-8 sm:p-10 shadow-xs space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-100">
+            <Lock className="w-8 h-8" />
+          </div>
 
-  // Identifica a próxima aula que o aluno deve assistir (primeira ainda não concluída)
-  const nextLesson = allLessons.find((l) => !completedLessons.includes(l.id)) || allLessons[0];
-  const nextLessonId = nextLesson?.id;
+          <div className="space-y-2">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              {course.title}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              Você ainda não possui acesso liberado a este curso. Para adquirir seu acesso e iniciar as aulas, converse com o instrutor da VL Automações pelo WhatsApp oficial.
+            </p>
+          </div>
 
-  // Descobre qual módulo contém a próxima aula para abri-lo por padrão
-  const activeModuleId =
-    course.modules.find((m) => m.lessons.some((l) => l.id === nextLessonId))?.id ||
-    course.modules[0]?.id;
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a
+              href={getCourseWhatsAppUrl(course.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
+            >
+              <MessageCircle className="w-4 h-4 shrink-0" />
+              <span>OBTER ACESSO AO CURSO</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  // Estado dos módulos abertos (por padrão, o módulo com a próxima aula fica aberto)
-  const [openModules, setOpenModules] = useState<Record<string, boolean>>(() => {
-    return activeModuleId ? { [activeModuleId]: true } : { [course.modules[0]?.id]: true };
-  });
-
-  const toggleModule = (modId: string) => {
-    setOpenModules((prev) => ({
-      ...prev,
-      [modId]: !prev[modId],
-    }));
-  };
-
+  const lessons = course.lessons || [];
   const completedCount = completedLessons.length;
-  const totalCount = allLessons.length;
-  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const totalCount = lessons.length;
+  const progressPercent =
+    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // Próxima aula não concluída
+  const nextLesson = lessons.find((l) => !completedLessons.includes(l.id)) || lessons[0];
 
   return (
     <div id="vl-course-view" className="max-w-4xl mx-auto space-y-6">
-      {/* Aviso de Acesso Restrito caso desativado no Firebase */}
-      {!hasAccess && (
-        <div
-          id="vl-course-restricted-banner"
-          className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs flex items-center gap-4"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-            <Lock className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Acesso pendente de liberação
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Seu usuário não possui liberação ativa no sistema de usuários da VL Automações.
-            </p>
+      {/* Seletor de Cursos Matriculados (se o aluno tiver mais de 1 curso em enrolledCourses) */}
+      {enrolledCourses.length > 1 && (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-3 sm:p-4 shadow-xs">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2 px-1">
+            Seus Cursos Liberados
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {enrolledCourses.map((c) => {
+              const isSelected = c.id === course.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onSelectCourse && onSelectCourse(c.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    isSelected
+                      ? "bg-[#ea580c] text-white shadow-xs"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>{c.title}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Topo do Curso: Título e Progresso Geral */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-7 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-0.5">
-              {course.category}
-            </span>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              {course.title}
-            </h1>
-          </div>
+      {/* Topo do Curso: Título, Descrição e Progresso Geral */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-7 space-y-5 shadow-xs">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            {course.title}
+          </h1>
+
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-3xl">
+            {course.subtitle || course.description}
+          </p>
         </div>
 
         {/* Progresso resumido */}
-        <div className="space-y-1.5 pt-2 border-t border-slate-100">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-medium">
+        <div className="space-y-2 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between text-xs sm:text-sm">
+            <span className="text-slate-600 font-semibold">
               Progresso do curso
             </span>
-            <span className="font-semibold text-slate-800">
-              {completedCount}/{totalCount} aulas ({progressPercent}%)
+            <span className="font-bold text-[#ea580c]">
+              {completedCount} de {totalCount} aulas ({progressPercent}%)
             </span>
           </div>
 
-          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-[#ea580c] rounded-full transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
@@ -111,178 +140,155 @@ export function CourseView({
         </div>
       </div>
 
-      {/* ================= LISTA DE MÓDULOS ================= */}
+      {/* ================= GRADE DE AULAS DIRETA (SEM MÓDULOS) ================= */}
       <div className="space-y-3">
-        {course.modules.map((mod, index) => {
-          const modLessons = mod.lessons;
-          const modCompleted = modLessons.filter((l) =>
-            completedLessons.includes(l.id)
-          ).length;
-          const isOpen = !!openModules[mod.id];
-          const hasActiveNextLesson = modLessons.some((l) => l.id === nextLessonId);
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-sm font-bold text-slate-800 tracking-tight">
+            Grade de Aulas ({totalCount})
+          </h2>
 
-          return (
-            <div
-              key={mod.id}
-              id={`module-card-${mod.id}`}
-              className={`bg-white rounded-2xl border transition-all overflow-hidden ${
-                hasActiveNextLesson && !isOpen
-                  ? "border-orange-300 shadow-xs"
-                  : "border-slate-200/80 shadow-xs"
-              }`}
+          {nextLesson && hasAccess && (
+            <button
+              type="button"
+              onClick={() => onSelectLesson(nextLesson)}
+              className="text-xs font-bold text-[#ea580c] hover:text-[#c2410c] flex items-center gap-1.5 cursor-pointer"
             >
-              {/* Header do Módulo (Clicável para expandir) */}
-              <button
-                type="button"
-                onClick={() => toggleModule(mod.id)}
-                className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors cursor-pointer"
-              >
-                <div className="space-y-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Módulo {index + 1}
-                    </span>
-                    {modCompleted === modLessons.length && modLessons.length > 0 && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        Concluído
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">
-                    {mod.title.replace(/^Módulo\s*\d+:\s*/i, "")}
-                  </h3>
-                </div>
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>
+                {completedCount > 0 ? "Continuar de onde parou" : "Começar pela Aula 01"}
+              </span>
+            </button>
+          )}
+        </div>
 
-                {/* Progresso do Módulo e Ícone Expandir */}
-                <div className="flex items-center gap-4 shrink-0">
-                  <span className="text-xs font-semibold text-slate-500">
-                    {modCompleted}/{modLessons.length} aulas
-                  </span>
+        {lessons.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center space-y-2 shadow-xs">
+            <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-800">
+              Aulas em preparação
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              As aulas deste curso estão sendo preparadas e serão disponibilizadas em breve pelo instrutor da VL Automações.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 shadow-xs overflow-hidden">
+            {lessons.map((les, index) => {
+              const isCompleted = completedLessons.includes(les.id);
+              const lessonNumber = String(les.order || index + 1).padStart(2, "0");
 
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
-                    {isOpen ? (
-                      <ChevronUp className="w-4 h-4" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4" />
-                    )}
-                  </div>
-                </div>
-              </button>
+              return (
+                <div
+                  key={les.id}
+                  id={`lesson-item-${les.id}`}
+                  className={`p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${
+                    isCompleted ? "bg-slate-50/50" : "hover:bg-slate-50/80"
+                  }`}
+                >
+                  {/* Lado Esquerdo: Checkbox de Conclusão e Título da Aula */}
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    {/* Botão de Marcar como Concluída */}
+                    <button
+                      type="button"
+                      disabled={!hasAccess}
+                      onClick={() => onToggleComplete(les.id)}
+                      className="mt-0.5 shrink-0 text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        isCompleted
+                          ? "Aula concluída. Clique para desmarcar"
+                          : "Marcar aula como concluída"
+                      }
+                    >
+                      {isCompleted ? (
+                        <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-300 flex items-center justify-center">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </div>
+                      ) : (
+                        <Circle className="w-5 h-5 text-slate-300 hover:text-slate-400" />
+                      )}
+                    </button>
 
-              {/* Lista de Aulas ao abrir o Módulo */}
-              {isOpen && (
-                <div className="border-t border-slate-100 bg-slate-50/50 p-3 sm:p-4 space-y-1.5">
-                  {modLessons.map((les) => {
-                    const isDone = completedLessons.includes(les.id);
-                    const isNext = les.id === nextLessonId && !isDone;
+                    {/* Informações da Aula */}
+                    <div
+                      onClick={() => hasAccess && onSelectLesson(les)}
+                      className={`min-w-0 flex-1 ${
+                        hasAccess ? "cursor-pointer group" : "cursor-not-allowed"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[11px] font-extrabold text-[#ea580c] uppercase tracking-wider">
+                          Aula {lessonNumber}
+                        </span>
 
-                    return (
-                      <div
-                        key={les.id}
-                        id={`lesson-item-${les.id}`}
-                        className={`px-4 py-3 rounded-xl border flex items-center justify-between gap-3 transition-colors ${
-                          isNext
-                            ? "bg-white border-[#ea580c] shadow-xs"
-                            : isDone
-                            ? "bg-white/80 border-slate-200/80 text-slate-600"
-                            : "bg-white border-slate-200/80 hover:border-slate-300 text-slate-800"
+                        {isCompleted && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.2 rounded-md border border-emerald-200">
+                            Concluída
+                          </span>
+                        )}
+                      </div>
+
+                      <h3
+                        className={`text-sm sm:text-base font-bold tracking-tight transition-colors ${
+                          hasAccess
+                            ? "text-slate-900 group-hover:text-[#ea580c]"
+                            : "text-slate-400"
                         }`}
                       >
-                        {/* Indicador de Status: ✓ Concluída | ○ Disponível | ▶ Próxima aula */}
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          {hasAccess ? (
-                            <button
-                              type="button"
-                              onClick={() => onToggleComplete(les.id)}
-                              title={
-                                isDone
-                                  ? "Aula concluída. Clique para desmarcar"
-                                  : "Marcar como concluída"
-                              }
-                              className="shrink-0 text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer"
-                            >
-                              {isDone ? (
-                                <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-300 flex items-center justify-center">
-                                  <Check className="w-3 h-3 stroke-[3]" />
-                                </div>
-                              ) : isNext ? (
-                                <div className="w-5 h-5 rounded-full bg-orange-50 text-[#ea580c] border border-orange-300 flex items-center justify-center">
-                                  <Play className="w-2.5 h-2.5 fill-current ml-0.5" />
-                                </div>
-                              ) : (
-                                <Circle className="w-5 h-5 text-slate-300" />
-                              )}
-                            </button>
-                          ) : (
-                            <div className="shrink-0 text-slate-400">
-                              <Lock className="w-4 h-4" />
-                            </div>
-                          )}
+                        {les.title}
+                      </h3>
 
-                          {/* Nome da Aula e Destaque da Próxima */}
-                          <div
-                            onClick={() => {
-                              if (hasAccess) {
-                                onSelectLesson(les);
-                              }
-                            }}
-                            className="min-w-0 flex-1 cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span
-                                className={`text-xs sm:text-sm font-medium transition-colors truncate ${
-                                  isNext
-                                    ? "font-bold text-slate-900"
-                                    : isDone
-                                    ? "text-slate-600"
-                                    : "text-slate-800 hover:text-[#ea580c]"
-                                }`}
-                              >
-                                {les.title}
-                              </span>
+                      {les.description && (
+                        <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                          {les.description}
+                        </p>
+                      )}
 
-                              {/* Destaque principal da Próxima Aula */}
-                              {isNext && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#ea580c] bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
-                                  Próxima aula
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                      {/* Metadados: Duração e Formulário */}
+                      <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-slate-400">
+                        {les.duration && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {les.duration}
+                          </span>
+                        )}
 
-                        {/* Lado Direito: Duração discreta e Ação */}
-                        <div className="flex items-center gap-3 shrink-0">
-                          {les.duration && (
-                            <div className="flex items-center gap-1 text-xs text-slate-400 font-medium">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              <span>{les.duration}</span>
-                            </div>
-                          )}
-
-                          {hasAccess && (
-                            <button
-                              type="button"
-                              onClick={() => onSelectLesson(les)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                                isNext
-                                  ? "bg-[#ea580c] hover:bg-[#c2410c] text-white shadow-xs"
-                                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                              }`}
-                            >
-                              <Play className="w-3 h-3 fill-current" />
-                              <span className="hidden sm:inline">Assistir</span>
-                            </button>
-                          )}
-                        </div>
+                        {les.formUrl && (
+                          <span className="inline-flex items-center gap-1 font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                            <FileSpreadsheet className="w-3 h-3 text-slate-500" />
+                            Atividade Google Forms
+                          </span>
+                        )}
                       </div>
-                    );
-                  })}
+                    </div>
+                  </div>
+
+                  {/* Lado Direito: Botão de Assistir Aula */}
+                  <div className="flex items-center justify-end gap-2 shrink-0 sm:self-center">
+                    {hasAccess ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectLesson(les)}
+                        className={`py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ${
+                          isCompleted
+                            ? "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                            : "bg-[#ea580c] hover:bg-[#c2410c] text-white"
+                        }`}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>{isCompleted ? "Rever aula" : "Assistir"}</span>
+                      </button>
+                    ) : (
+                      <div className="py-1.5 px-2.5 bg-slate-100 rounded-lg text-[11px] text-slate-400 flex items-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Bloqueada</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

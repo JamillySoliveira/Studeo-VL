@@ -4,22 +4,27 @@ import React from "react";
 import {
   Home,
   BookOpen,
-  Award,
+  Bell,
   FileCheck,
   User,
   LogOut,
   X,
   ShieldCheck,
+  Lightbulb,
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
+import { getUserAccessibleCourseIds } from "@/lib/courseService";
+import { PLATFORM_NOTICES } from "@/lib/constants";
 
 export type TabType =
   | "dashboard"
   | "course"
   | "lesson"
+  | "notices"
   | "progress"
   | "certificate"
   | "profile"
+  | "help"
   | "admin";
 
 interface SidebarProps {
@@ -40,24 +45,30 @@ export function Sidebar({
   isOpenMobile,
   onCloseMobile,
 }: SidebarProps) {
-  // Estrutura sugerida: Início, Meus Cursos, Progresso, Certificado, Perfil
+  // Quantidade de avisos disponíveis para os cursos aos quais o aluno possui acesso
+  const accessibleCourseIds = getUserAccessibleCourseIds(user);
+  const noticesCount = PLATFORM_NOTICES.filter((n) =>
+    accessibleCourseIds.includes(n.courseId)
+  ).length;
+
+  // Navegação: Início, Meus cursos, Avisos, Certificado, Meu perfil, Ajuda
   const navItems: {
     id: TabType;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
     { id: "dashboard", label: "Início", icon: Home },
-    { id: "course", label: "Meus Cursos", icon: BookOpen },
-    { id: "progress", label: "Progresso", icon: Award },
+    { id: "course", label: "Meus cursos", icon: BookOpen },
+    { id: "notices", label: "Avisos", icon: Bell },
     { id: "certificate", label: "Certificado", icon: FileCheck },
-    { id: "profile", label: "Perfil", icon: User },
+    { id: "profile", label: "Meu perfil", icon: User },
+    { id: "help", label: "Ajuda", icon: Lightbulb },
   ];
 
-  // Exibe o painel administrativo para usuários administradores
+  // Exibe o painel administrativo para usuários com role === "admin"
   const isAdmin =
     user?.role === "admin" ||
-    user?.email === "adm.vlautomacao@gmail.com" ||
-    user?.email?.includes("admin");
+    user?.email === "adm.vlautomacao@gmail.com";
   if (isAdmin) {
     navItems.push({ id: "admin", label: "Painel Admin", icon: ShieldCheck });
   }
@@ -145,7 +156,12 @@ export function Sidebar({
                       isActive ? "text-[#ea580c]" : "text-slate-400"
                     }`}
                   />
-                  <span>{item.label}</span>
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {item.id === "notices" && noticesCount > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-[#ea580c]">
+                      {noticesCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
