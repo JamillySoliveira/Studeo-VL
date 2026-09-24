@@ -115,11 +115,10 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
             {/* Título Principal */}
             <div className="space-y-3 pt-2">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white leading-snug">
-                Aprenda automação industrial na prática
+                APRENDA AUTOMAÇÃO INDUSTRIAL NA PRÁTICA
               </h1>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Desenvolva projetos reais com simuladores industriais, programação de CLPs,
-                sistemas SCADA e supervisórios das maiores tecnologias do mercado.
+                Configuração de CLPs, desenvolver programas em Ladder e criar projetos de automação do zero, com uma abordagem prática e voltada para o ambiente industrial.
               </p>
             </div>
 
@@ -128,21 +127,21 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-[#ea580c] shrink-0 mt-0.5" />
                 <span className="text-slate-200 leading-snug">
-                  Aulas 100% práticas com simuladores de ponta
+                   Aulas 100% práticas com equipamentos de ponta
                 </span>
               </div>
 
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-[#ea580c] shrink-0 mt-0.5" />
                 <span className="text-slate-200 leading-snug">
-                  Certificado profissional reconhecido pelo mercado industrial
+                  Do primeiro programa ao seu próprio projeto de automação.
                 </span>
               </div>
 
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-[#ea580c] shrink-0 mt-0.5" />
                 <span className="text-slate-200 leading-snug">
-                  Mentoria técnica direta e comunidade ativa de engenheiros
+                  Revise as aulas quantas vezes precisar, no seu próprio ritmo.
                 </span>
               </div>
             </div>
