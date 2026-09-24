@@ -8,9 +8,6 @@ import {
   CheckCircle2,
   MessageCircle,
   BookOpen,
-  Award,
-  Bell,
-  HelpCircle,
   CheckCheck,
 } from "lucide-react";
 import { Course, Lesson, UserProfile } from "@/lib/types";
@@ -38,7 +35,7 @@ interface DashboardViewProps {
  *
  * Estrutura moderna, limpa e funcional:
  * 1. Cabeçalho de Boas-vindas personalizado
- * 2. Card de destaque "Continue de onde parou" + Acesso Rápido
+ * 2. Card de destaque "Continue de onde parou"
  * 3. Grade dos cursos da plataforma (Meus Cursos com acessos e solicitações via WhatsApp)
  */
 export function DashboardView({
@@ -50,9 +47,6 @@ export function DashboardView({
   onSelectCourse,
   onStartLesson,
   onGoToCourse,
-  onGoToHelp,
-  onGoToCertificates,
-  onGoToNotices,
 }: DashboardViewProps) {
   // Nome amigável do aluno para saudação dinâmica
   const displayName =
@@ -139,12 +133,12 @@ export function DashboardView({
         </p>
       </section>
 
-      {/* ================= 2. BLOCO SUPERIOR: CONTINUIDADE & ACESSO RÁPIDO ================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ================= 2. BLOCO SUPERIOR: CONTINUIDADE ================= */}
+      <div>
         {/* CARD DE CONTINUIDADE DOS ESTUDOS (Destaque Principal) */}
         <section
           aria-label="Continue de onde parou"
-          className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs flex flex-col justify-between space-y-5"
+          className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs flex flex-col justify-between space-y-5"
         >
           {highlightedCourse ? (
             <>
@@ -262,117 +256,6 @@ export function DashboardView({
               </div>
             </div>
           )}
-        </section>
-
-        {/* 6. ACESSO RÁPIDO */}
-        <section
-          aria-label="Acesso rápido"
-          className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs flex flex-col justify-between space-y-4"
-        >
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-900">
-              Acesso rápido
-            </h3>
-            <p className="text-xs text-slate-500">
-              Atalhos úteis para o seu dia a dia
-            </p>
-          </div>
-
-          <div className="space-y-2.5">
-            {/* Atalho Meus Cursos */}
-            <button
-              type="button"
-              onClick={handleScrollToCourses}
-              className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
-                  <BookOpen className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
-                    Meus Cursos
-                  </span>
-                  <span className="text-[11px] text-slate-500 block">
-                    Cursos disponíveis na conta
-                  </span>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-            </button>
-
-            {/* Atalho Certificado */}
-            {onGoToCertificates && (
-              <button
-                type="button"
-                onClick={onGoToCertificates}
-                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
-                    <Award className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
-                      Certificados
-                    </span>
-                    <span className="text-[11px] text-slate-500 block">
-                      Status de conclusão
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
-            )}
-
-            {/* Atalho Avisos */}
-            {onGoToNotices && (
-              <button
-                type="button"
-                onClick={onGoToNotices}
-                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
-                    <Bell className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
-                      Avisos da Turma
-                    </span>
-                    <span className="text-[11px] text-slate-500 block">
-                      Comunicados e atualizações
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
-            )}
-
-            {/* Atalho Ajuda */}
-            {onGoToHelp && (
-              <button
-                type="button"
-                onClick={onGoToHelp}
-                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200/70 text-left flex items-center justify-between transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs group-hover:text-[#ea580c] transition-colors">
-                    <HelpCircle className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900 block group-hover:text-[#ea580c] transition-colors">
-                      Ajuda & FAQ
-                    </span>
-                    <span className="text-[11px] text-slate-500 block">
-                      Como usar a plataforma
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
-            )}
-          </div>
         </section>
       </div>
 
