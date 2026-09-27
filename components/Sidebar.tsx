@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { getUserAccessibleCourseIds, isDemoUser } from "@/lib/courseService";
-import { PLATFORM_NOTICES } from "@/lib/constants";
+import { getStoredNotices } from "@/lib/constants";
 
 export type TabType =
   | "dashboard"
@@ -56,12 +56,13 @@ export function Sidebar({
   isOpenMobile,
   onCloseMobile,
 }: SidebarProps) {
-  // Quantidade de avisos disponíveis para os cursos aos quais o aluno possui acesso
-  const accessibleCourseIds = getUserAccessibleCourseIds(user);
-  const noticesCount = PLATFORM_NOTICES.filter((n) =>
-    accessibleCourseIds.includes(n.courseId)
-  ).length;
 
+  // Quantidade de avisos disponíveis para os cursos aos quais o aluno possui acesso
+const accessibleCourseIds = getUserAccessibleCourseIds(user);
+
+const noticesCount = getStoredNotices().filter((notice) =>
+  accessibleCourseIds.includes(notice.courseId)
+).length;
   // Navegação: Início, Meus cursos, Avisos, Certificado, Meu perfil, Ajuda
   const navItems: {
     id: TabType;

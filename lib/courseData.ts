@@ -145,7 +145,7 @@ export const AVAILABLE_COURSES: Course[] = [
     description:
       "Aprenda na prática a arquitetura ControlLogix e CompactLogix da Rockwell Automation com Studio 5000. Domine escalonamento analógico 4-20mA/0-10V, sintonia de malhas PID, parametrização de inversores PowerFlex via Ethernet/IP e criação de telas de supervisório no FactoryTalk View.",
     category: "Automação Industrial & CLPs",
-    instructor: "Eng. Victor Lima - VL Automações",
+    instructor: "Vicenzo Lemes",
     badge: "",
     totalLessons: BASIC_ROCKWELL_LESSONS.length,
     lessons: BASIC_ROCKWELL_LESSONS,
@@ -157,7 +157,7 @@ export const AVAILABLE_COURSES: Course[] = [
     description:
       "Aprofunde seus conhecimentos práticos em manipulação avançada de sinais industriais, criação de Add-On Instructions (AOI), tipos de dados definidos pelo usuário (UDT), e parametrização detalhada de inversores PowerFlex via Ethernet/IP.",
     category: "Automação Industrial & CLPs",
-    instructor: "Eng. Victor Lima - VL Automações",
+    instructor: "Vicenzo Lemes",
     badge: "",
     totalLessons: 0,
     lessons: [],
@@ -169,7 +169,7 @@ export const AVAILABLE_COURSES: Course[] = [
     description:
       "Domine o desenvolvimento de sistemas supervisórios completos com FactoryTalk View SE/ME, controle em malha fechada, redundância de controladores ControlLogix, gestão de alarmes industriais e diagnóstico de falhas.",
     category: "Automação Industrial & CLPs",
-    instructor: "Eng. Victor Lima - VL Automações",
+    instructor: "Vicenzo Lemes",
     badge: "",
     totalLessons: 0,
     lessons: [],

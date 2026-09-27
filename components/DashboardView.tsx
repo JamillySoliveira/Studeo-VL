@@ -145,7 +145,7 @@ export function DashboardView({
       {/* ================= 1. CABEÇALHO DE BOAS-VINDAS ================= */}
       <section className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-6 sm:p-8 shadow-xs space-y-2 transition-colors">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Olá, {displayName} 👋
+          Olá, {displayName} <i className="text-orange-500">!</i>
         </h1>
         <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 font-semibold leading-relaxed">
           Continue sua jornada de aprendizado em automação industrial.

@@ -122,7 +122,7 @@ export function HelpView({}: HelpViewProps) {
               >
                 <div className="flex items-center gap-3">
                   <span className="text-base select-none shrink-0" aria-hidden="true">
-                    ❓
+                    {isOpen ? "" : <i className="text-orange-500">?</i>}
                   </span>
                   <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#ea580c] dark:group-hover:text-orange-400 transition-colors leading-snug">
                     {item.question}
