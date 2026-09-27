@@ -41,11 +41,11 @@ export function NoticesView({ user, onGoToCourse }: NoticesViewProps) {
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <Bell className="w-5 h-5 text-[#ea580c]" />
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             Avisos
           </h1>
         </div>
-        <p className="text-xs sm:text-sm text-slate-500 font-medium">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
           Acompanhe novidades, materiais e novas aulas dos seus cursos liberados.
         </p>
       </div>
@@ -56,18 +56,18 @@ export function NoticesView({ user, onGoToCourse }: NoticesViewProps) {
           {studentNotices.map((notice) => (
             <div
               key={notice.id}
-              className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors"
             >
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#ea580c] bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#ea580c] dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded-md border border-orange-200 dark:border-orange-900/50">
                     {notice.title}
                   </span>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
                     {notice.date}
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-medium leading-relaxed">
                   {notice.message}
                 </p>
               </div>
@@ -76,7 +76,7 @@ export function NoticesView({ user, onGoToCourse }: NoticesViewProps) {
                 <button
                   type="button"
                   onClick={() => onGoToCourse(notice.courseId)}
-                  className="w-full sm:w-auto py-2 px-4 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  className="w-full sm:w-auto py-2 px-4 bg-slate-900 hover:bg-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:border dark:border-slate-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
                 >
                   <span>Ver curso</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -86,14 +86,14 @@ export function NoticesView({ user, onGoToCourse }: NoticesViewProps) {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 sm:p-12 text-center shadow-xs space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2">
+        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-8 sm:p-12 text-center shadow-xs space-y-2 transition-colors">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center mx-auto mb-2">
             <Bell className="w-6 h-6" />
           </div>
-          <h2 className="text-base font-bold text-slate-800">
+          <h2 className="text-base font-bold text-slate-800 dark:text-white">
             Você não possui novos avisos.
           </h2>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
             Quando houver novos comunicados ou aulas liberadas nos seus cursos matriculados, eles serão exibidos aqui.
           </p>
         </div>

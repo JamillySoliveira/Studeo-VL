@@ -56,8 +56,8 @@ export function CertificateView({
     <div id="vl-certificate-page" className="max-w-2xl mx-auto space-y-6 py-4">
       {/* Seletor de Cursos Matriculados (quando o aluno tiver mais de um) */}
       {enrolledCourses.length > 1 && (
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2 px-1">
+        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-4 shadow-xs transition-colors">
+          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2 px-1">
             Selecione o Curso para o Certificado
           </span>
           <div className="flex flex-wrap gap-2">
@@ -71,7 +71,7 @@ export function CertificateView({
                   className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
                     isSelected
                       ? "bg-[#ea580c] text-white shadow-xs"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
                   }`}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
@@ -84,13 +84,13 @@ export function CertificateView({
       )}
 
       {/* Cartão Principal do Certificado */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-10 shadow-xs text-center space-y-6">
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-6 sm:p-10 shadow-xs text-center space-y-6 transition-colors">
         {/* Ícone de Destaque */}
         <div
           className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${
             isCompleted
-              ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-              : "bg-orange-50 text-[#ea580c] border-orange-200"
+              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+              : "bg-orange-50 dark:bg-orange-950/40 text-[#ea580c] dark:text-orange-400 border-orange-200 dark:border-orange-900/50"
           }`}
         >
           <Award className="w-8 h-8 stroke-[1.75]" />
@@ -98,7 +98,7 @@ export function CertificateView({
 
         {/* Título do Curso */}
         <div className="space-y-1 max-w-lg mx-auto">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+          <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             {course.title}
           </span>
         </div>
@@ -106,14 +106,14 @@ export function CertificateView({
         {/* CASO 1: Curso NÃO Concluído */}
         {!isCompleted && (
           <div className="space-y-5 max-w-md mx-auto">
-            <p className="text-base sm:text-lg font-bold text-slate-800">
+            <p className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
               Certificado disponível após a conclusão do curso.
             </p>
 
             <button
               type="button"
               onClick={onGoToCourse}
-              className="inline-flex items-center justify-center gap-2 py-3 px-6 bg-slate-900 hover:bg-black text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 py-3 px-6 bg-slate-900 hover:bg-black dark:bg-[#ea580c] dark:hover:bg-[#c2410c] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
             >
               <Clock className="w-4 h-4" />
               <span>Continuar aulas do curso</span>
@@ -125,11 +125,11 @@ export function CertificateView({
         {isCompleted && hasCertificateFile && (
           <div className="space-y-5 max-w-md mx-auto">
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 text-emerald-700 font-bold text-base sm:text-lg">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <div className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold text-base sm:text-lg">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>✓ Curso concluído</span>
               </div>
-              <p className="text-sm font-semibold text-slate-700">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Seu certificado está disponível.
               </p>
             </div>
@@ -150,11 +150,11 @@ export function CertificateView({
         {/* CASO 3: Curso 100% Concluído, mas Administrador ainda não cadastrou o arquivo */}
         {isCompleted && !hasCertificateFile && (
           <div className="space-y-3 max-w-md mx-auto">
-            <div className="inline-flex items-center gap-1.5 text-emerald-700 font-bold text-base sm:text-lg">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <div className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold text-base sm:text-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               <span>✓ Curso concluído</span>
             </div>
-            <p className="text-sm text-slate-600 leading-relaxed font-medium">
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
               O certificado estará disponível assim que o arquivo for disponibilizado pelo administrador.
             </p>
           </div>

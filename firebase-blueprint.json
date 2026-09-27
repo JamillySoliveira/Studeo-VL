@@ -73,6 +73,18 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["userId", "courseId", "completedLessons"]
+    },
+    "deletedLessons": {
+      "title": "deletedLessons",
+      "description": "Registro de aulas excluídas pelo administrador para impedir a reconstrução a partir das aulas padrão",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "moduleId": { "type": "string" },
+        "deletedAt": { "type": "string" }
+      },
+      "required": ["id"]
     }
   }
 }

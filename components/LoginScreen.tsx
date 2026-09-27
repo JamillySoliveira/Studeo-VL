@@ -67,12 +67,12 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
   return (
     <div
       id="vl-login-wrapper"
-      className="min-h-screen bg-[#f1f5f9] flex items-center justify-center p-4 sm:p-6 lg:p-8"
+      className="min-h-screen bg-[#f1f5f9] dark:bg-[#090d16] flex items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors"
     >
       {/* Card principal com divisão em duas colunas idêntica à identidade visual */}
       <div
         id="vl-auth-card"
-        className="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 border border-slate-200/80"
+        className="w-full max-w-5xl bg-white dark:bg-[#111827] rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 border border-slate-200/80 dark:border-slate-800 transition-colors"
       >
         {/* ================= COLUNA ESQUERDA: APRESENTAÇÃO INDUSTRIAL ================= */}
         <div
@@ -157,18 +157,18 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
         {/* ================= COLUNA DIREITA: ACESSO COM GOOGLE ================= */}
         <div id="vl-form-panel" className="lg:col-span-7 p-8 sm:p-12 flex flex-col justify-center">
           {/* Cabeçalho de Segurança */}
-          <div className="flex items-center justify-end text-xs text-slate-500 gap-1.5 mb-6">
+          <div className="flex items-center justify-end text-xs text-slate-500 dark:text-slate-400 gap-1.5 mb-6">
             <span>Ambiente Seguro & Criptografado</span>
-            <Lock className="w-3.5 h-3.5 text-slate-400" />
+            <Lock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
           </div>
 
           {/* Mensagens de Alerta (Erro ou Sucesso) */}
           {errorMessage && (
             <div
               id="vl-alert-error"
-              className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-lg flex items-start gap-2.5"
+              className="mb-5 p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs sm:text-sm rounded-lg flex items-start gap-2.5"
             >
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500 dark:text-red-400" />
               <div className="flex-1">{errorMessage}</div>
             </div>
           )}
@@ -176,19 +176,19 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
           {successMessage && (
             <div
               id="vl-alert-success"
-              className="mb-5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-lg flex items-start gap-2.5"
+              className="mb-5 p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm rounded-lg flex items-start gap-2.5"
             >
-              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
               <div className="flex-1">{successMessage}</div>
             </div>
           )}
 
           {/* Títulos do Acesso */}
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
               Acessar Plataforma
             </h2>
-            <p className="text-sm text-slate-500 mt-1.5">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">
               Utilize sua conta Google para acessar instantaneamente a área do aluno e continuar seus estudos.
             </p>
           </div>
@@ -200,7 +200,7 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full py-3.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 active:bg-slate-100 text-slate-800 font-semibold rounded-xl text-sm sm:text-base flex items-center justify-center gap-3 transition-all shadow-xs cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full py-3.5 px-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 hover:border-slate-400 dark:hover:border-slate-600 active:bg-slate-100 dark:active:bg-slate-700 text-slate-800 dark:text-white font-semibold rounded-xl text-sm sm:text-base flex items-center justify-center gap-3 transition-all shadow-xs cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {/* Ícone oficial Google SVG */}
               <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
@@ -230,7 +230,7 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
                 id="btn-demo-auth"
                 type="button"
                 onClick={onDemoLogin}
-                className="w-full py-2.5 px-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-800 text-xs rounded-xl font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="w-full py-2.5 px-3 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100/80 dark:hover:bg-amber-950/50 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-300 text-xs rounded-xl font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-[#ea580c]" />
                 <span>Acesso Rápido de Teste (Demonstração do Aluno)</span>
@@ -239,8 +239,8 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
           </div>
 
           {/* Nota informativa de rodapé */}
-          <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-            <p className="text-xs text-slate-400 leading-relaxed">
+          <div className="mt-8 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
               O acesso aos cursos é liberado através do sistema de permissões da VL Automações.
             </p>
           </div>

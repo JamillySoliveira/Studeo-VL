@@ -92,23 +92,23 @@ export function HelpView({}: HelpViewProps) {
   return (
     <div id="vl-help-view" className="max-w-3xl mx-auto py-4 sm:py-6 space-y-6">
       {/* Cabeçalho minimalista */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs space-y-2">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-[#ea580c] text-xs font-bold tracking-wide">
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-xs space-y-2 transition-colors">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900/50 text-[#ea580c] dark:text-orange-400 text-xs font-bold tracking-wide">
           <HelpCircle className="w-3.5 h-3.5" />
           <span>Dúvidas Frequentes</span>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
           Como usar a plataforma?
         </h1>
 
-        <p className="text-sm text-slate-600 font-medium">
+        <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">
           Clique nas dúvidas abaixo para ver as orientações de uso da plataforma.
         </p>
       </div>
 
       {/* Lista de Acordeão / FAQ */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 divide-y divide-slate-100 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 shadow-xs overflow-hidden transition-colors">
         {FAQ_ITEMS.map((item) => {
           const isOpen = openId === item.id;
 
@@ -118,13 +118,13 @@ export function HelpView({}: HelpViewProps) {
                 type="button"
                 onClick={() => toggleItem(item.id)}
                 aria-expanded={isOpen}
-                className="w-full text-left p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                className="w-full text-left p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-base select-none shrink-0" aria-hidden="true">
                     ❓
                   </span>
-                  <span className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#ea580c] transition-colors leading-snug">
+                  <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#ea580c] dark:group-hover:text-orange-400 transition-colors leading-snug">
                     {item.question}
                   </span>
                 </div>
@@ -132,8 +132,8 @@ export function HelpView({}: HelpViewProps) {
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-200 ${
                     isOpen
-                      ? "rotate-180 bg-orange-50 text-[#ea580c]"
-                      : "text-slate-400 group-hover:text-slate-600"
+                      ? "rotate-180 bg-orange-50 dark:bg-orange-950/40 text-[#ea580c] dark:text-orange-400"
+                      : "text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300"
                   }`}
                 >
                   <ChevronDown className="w-4 h-4" />
@@ -150,8 +150,8 @@ export function HelpView({}: HelpViewProps) {
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="px-5 pb-5 pt-1 pl-11 sm:pl-12 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal border-t border-slate-50">
-                      <p className="bg-slate-50 p-4 rounded-xl border border-slate-200/60">
+                    <div className="px-5 pb-5 pt-1 pl-11 sm:pl-12 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-normal border-t border-slate-50 dark:border-slate-800">
+                      <p className="bg-slate-50 dark:bg-slate-800/70 p-4 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
                         {item.answer}
                       </p>
                     </div>

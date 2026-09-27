@@ -90,18 +90,18 @@ export function ProfileView({
     <div id="vl-profile-page" className="max-w-xl mx-auto space-y-6">
       {/* Topo do Perfil */}
       <div className="space-y-1 text-center sm:text-left">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
           Perfil
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
           Gerencie suas informações de acesso e certificação.
         </p>
       </div>
 
       {/* Card de Dados Pessoais */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 space-y-6 shadow-xs">
-        <div className="flex items-center gap-4 pb-4 border-b border-slate-100">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center text-lg font-bold">
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-xs transition-colors">
+        <div className="flex items-center gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 flex items-center justify-center text-lg font-bold">
             {user?.displayName
               ? user.displayName.charAt(0).toUpperCase()
               : user?.email
@@ -109,10 +109,10 @@ export function ProfileView({
               : "A"}
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
               {user?.displayName || "Aluno"}
             </h2>
-            <p className="text-xs text-slate-400">{user?.email}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{user?.email}</p>
           </div>
         </div>
 
@@ -120,14 +120,14 @@ export function ProfileView({
           <div
             className={`p-3 rounded-xl text-xs sm:text-sm flex items-center gap-2 ${
               message.type === "success"
-                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                : "bg-red-50 text-red-700 border border-red-200"
+                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
             }`}
           >
             {message.type === "success" ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0" />
             )}
             <span>{message.text}</span>
           </div>
@@ -137,12 +137,12 @@ export function ProfileView({
           <div>
             <label
               htmlFor="profile-name-input"
-              className="block text-xs font-semibold text-slate-700 mb-1.5"
+              className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
             >
               Nome Completo
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 id="profile-name-input"
                 type="text"
@@ -150,25 +150,25 @@ export function ProfileView({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Seu nome"
                 required
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#ea580c] transition-all"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c] transition-all"
               />
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
               Utilizado para emissão do certificado de conclusão.
             </p>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               E-mail
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Mail className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="email"
                 disabled
                 value={user?.email || ""}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-500 cursor-not-allowed"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-xs sm:text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed"
               />
             </div>
           </div>
@@ -193,7 +193,7 @@ export function ProfileView({
           id="btn-profile-logout"
           type="button"
           onClick={onLogout}
-          className="w-full py-3 px-4 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 text-xs sm:text-sm font-semibold rounded-xl border border-slate-200 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+          className="w-full py-3 px-4 bg-white dark:bg-[#111827] hover:bg-red-50 dark:hover:bg-red-950/30 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 text-xs sm:text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-800 transition-colors flex items-center justify-center gap-2 cursor-pointer"
         >
           <LogOut className="w-4 h-4" />
           <span>Sair da conta</span>

@@ -30,7 +30,8 @@
  *      Perfil, Ajuda (FAQ interativo) e Painel Administrativo.
  */
 
-import React, { useEffect, useState, useTransition } from "react";
+import React, { useEffect, useState, useTransition, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { UserProfile, Course, Lesson } from "@/lib/types";
@@ -49,21 +50,69 @@ import {
   saveLessonVideoUrl,
   checkUserCourseAccess,
   getUserAccessibleCourseIds,
+  isDemoUser,
+  sanitizeCourseForUser,
+  sanitizeCoursesForUser,
 } from "@/lib/courseService";
 
-// Componentes da Aplicação
+// Componentes da Aplicação de Carga Imediata
 import { LoginScreen } from "@/components/LoginScreen";
 import { Sidebar, TabType } from "@/components/Sidebar";
 import { Navbar } from "@/components/Navbar";
 import { DashboardView } from "@/components/DashboardView";
-import { CourseView } from "@/components/CourseView";
-import { LessonPlayer } from "@/components/LessonPlayer";
-import { NoticesView } from "@/components/NoticesView";
-import { ProgressView } from "@/components/ProgressView";
-import { ProfileView } from "@/components/ProfileView";
-import { CertificateView } from "@/components/CertificateView";
-import { HelpView } from "@/components/HelpView";
-import { AdminView } from "@/components/AdminView";
+
+/**
+ * Esqueleto sutil e leve para transição de abas sob demanda (Code Splitting)
+ */
+function TabLoadingSkeleton() {
+  return (
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 space-y-4 animate-pulse">
+      <div className="h-7 bg-slate-200 dark:bg-slate-800 rounded-xl w-48 mb-4" />
+      <div className="h-36 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="h-28 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800" />
+        <div className="h-28 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800" />
+      </div>
+    </div>
+  );
+}
+
+// =======================================================================
+// CARREGAMENTO SOB DEMANDA (DYNAMIC IMPORTS / DIVISÃO DE CÓDIGO)
+// Abas secundárias são carregadas somente quando o aluno ou admin as acessa.
+// =======================================================================
+const CourseView = dynamic(
+  () => import("@/components/CourseView").then((mod) => mod.CourseView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const LessonPlayer = dynamic(
+  () => import("@/components/LessonPlayer").then((mod) => mod.LessonPlayer),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const NoticesView = dynamic(
+  () => import("@/components/NoticesView").then((mod) => mod.NoticesView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const ProgressView = dynamic(
+  () => import("@/components/ProgressView").then((mod) => mod.ProgressView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const CertificateView = dynamic(
+  () => import("@/components/CertificateView").then((mod) => mod.CertificateView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const ProfileView = dynamic(
+  () => import("@/components/ProfileView").then((mod) => mod.ProfileView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const HelpView = dynamic(
+  () => import("@/components/HelpView").then((mod) => mod.HelpView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
+const AdminView = dynamic(
+  () => import("@/components/AdminView").then((mod) => mod.AdminView),
+  { loading: () => <TabLoadingSkeleton /> }
+);
 
 export default function StudentApp() {
   // =====================================================================
@@ -81,13 +130,20 @@ export default function StudentApp() {
 
   // ID do curso que o aluno está visualizando no momento
   const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_COURSE_ID);
-  // Objeto completo com dados e aulas do curso ativo
-  const [course, setCourse] = useState<Course>(INITIAL_COURSE);
   // Lista com todos os cursos cadastrados na plataforma
   const [allCourses, setAllCourses] = useState<Course[]>([INITIAL_COURSE]);
 
+  // Curso ativo derivado em memória (elimina renders em cascata e sincronizações redundantes)
+  const course = useMemo<Course>(() => {
+    return (
+      allCourses.find((c) => c.id === selectedCourseId) ||
+      allCourses[0] ||
+      INITIAL_COURSE
+    );
+  }, [allCourses, selectedCourseId]);
+
   // Aula selecionada atualmente para assistir no reprodutor
-  const [currentLesson, setCurrentLesson] = useState<Lesson>(
+  const [selectedLesson, setSelectedLesson] = useState<Lesson>(
     INITIAL_COURSE.lessons[0] || {
       id: "aula-1-1",
       courseId: "rockwell-basico",
@@ -98,6 +154,15 @@ export default function StudentApp() {
       order: 1,
     }
   );
+
+  // Aula ativa garantindo pertinência ao curso ativo
+  const currentLesson = useMemo<Lesson>(() => {
+    if (!course.lessons || course.lessons.length === 0) {
+      return selectedLesson;
+    }
+    const found = course.lessons.find((l) => l.id === selectedLesson.id);
+    return found || course.lessons[0];
+  }, [course, selectedLesson]);
 
   // =====================================================================
   // ESTADOS DE PROGRESSO DO ALUNO
@@ -135,38 +200,35 @@ export default function StudentApp() {
   };
 
   // =====================================================================
-  // SINCRONIZAÇÃO DE DADOS COM O FIRESTORE
+  // SINCRONIZAÇÃO DE DADOS COM O FIRESTORE (ALTA PERFORMANCE)
   // =====================================================================
 
-  // 1. Carrega todos os cursos sempre que o curso selecionado for alterado
+  const userUid = user?.uid;
+  const userRole = user?.role;
+  const userIsDemo = isDemoUser(user);
+
+  // 1. Carrega todos os cursos na inicialização ou quando permissões do usuário mudarem
   useEffect(() => {
     let isMounted = true;
-    getAllCourses().then((courses) => {
+    getAllCourses(user).then((courses) => {
       if (!isMounted) return;
+      const sanitized = sanitizeCoursesForUser(courses, user);
       startTransition(() => {
-        setAllCourses(courses);
-        const target =
-          courses.find((c) => c.id === selectedCourseId) || courses[0];
-        setCourse(target);
-        if (target.lessons.length > 0) {
-          setCurrentLesson((prev) => {
-            const exists = target.lessons.find((l) => l.id === prev.id);
-            return exists || target.lessons[0];
-          });
-        }
+        setAllCourses(sanitized);
       });
     });
 
     return () => {
       isMounted = false;
     };
-  }, [selectedCourseId]);
+  }, [user, userUid, userRole, userIsDemo]);
 
-  // 2. Busca o progresso (aulas e formulários) do aluno para o curso ativo no Firestore
+  // 2. Busca o progresso (aulas e formulários) com cache inteligente e deduplicação
   useEffect(() => {
     if (!user?.uid) return;
     let isMounted = true;
 
+    // Busca detalhada para o curso ativo
     getUserProgress(user.uid, selectedCourseId).then((progressData) => {
       if (!isMounted) return;
       startTransition(() => {
@@ -179,16 +241,7 @@ export default function StudentApp() {
       });
     });
 
-    return () => {
-      isMounted = false;
-    };
-  }, [user?.uid, selectedCourseId]);
-
-  // 3. Carrega o mapa de progresso de todos os cursos para exibição no Dashboard
-  useEffect(() => {
-    if (!user?.uid) return;
-    let isMounted = true;
-
+    // Mapa geral para o Dashboard (utiliza cache/promessas compartilhadas de forma não-bloqueante)
     getUserCoursesProgressMap(
       user.uid,
       AVAILABLE_COURSES.map((c) => c.id)
@@ -205,9 +258,9 @@ export default function StudentApp() {
     return () => {
       isMounted = false;
     };
-  }, [user?.uid]);
+  }, [user?.uid, selectedCourseId]);
 
-  // 4. Observa o estado de autenticação do Firebase em tempo real
+  // 3. Observa o estado de autenticação do Firebase em tempo real (montagem única)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
@@ -242,17 +295,20 @@ export default function StudentApp() {
             ];
           }
 
+          // Aluno Demonstração nunca possui papel de administrador
+          if (isDemoUser(studentProfile)) {
+            studentProfile.role = "student";
+          }
+
           startTransition(() => {
             setUser(studentProfile);
 
             // Garante que o curso ativo esteja entre os cursos liberados para o aluno
             const accessibleIds = getUserAccessibleCourseIds(studentProfile);
-            if (
-              accessibleIds.length > 0 &&
-              !accessibleIds.includes(selectedCourseId) &&
-              studentProfile.role !== "admin"
-            ) {
-              setSelectedCourseId(accessibleIds[0]);
+            if (accessibleIds.length > 0 && studentProfile.role !== "admin") {
+              setSelectedCourseId((curr) =>
+                accessibleIds.includes(curr) ? curr : accessibleIds[0]
+              );
             }
           });
         } else {
@@ -265,16 +321,14 @@ export default function StudentApp() {
     );
 
     return () => unsubscribe();
-  }, [selectedCourseId]);
+  }, []);
 
   // Recarrega todos os cursos após alterações administrativas
   const reloadAllCourses = async () => {
-    const courses = await getAllCourses();
+    const courses = await getAllCourses(user);
+    const sanitizedCourses = sanitizeCoursesForUser(courses, user);
     startTransition(() => {
-      setAllCourses(courses);
-      const target =
-        courses.find((c) => c.id === selectedCourseId) || courses[0];
-      setCourse(target);
+      setAllCourses(sanitizedCourses);
     });
   };
 
@@ -293,6 +347,14 @@ export default function StudentApp() {
       enrolledCourses: ["rockwell-basico"],
     };
 
+    // Higieniza imediatamente cursos e aulas em memória, removendo URLs de vídeo
+    setAllCourses((prev) => sanitizeCoursesForUser(prev, demoUser));
+    setSelectedLesson((prev) => ({
+      ...prev,
+      videoUrl: "",
+      youtubeUrl: "",
+    }));
+
     setUser(demoUser);
 
     try {
@@ -302,8 +364,8 @@ export default function StudentApp() {
         setCompletedForms(progressData.completedForms || []);
       } else {
         const initialDemoProgress = [
-          course.lessons[0]?.id || "aula-1-1",
-          course.lessons[1]?.id || "aula-1-2",
+          INITIAL_COURSE.lessons[0]?.id || "aula-1-1",
+          INITIAL_COURSE.lessons[1]?.id || "aula-1-2",
         ];
         setCompletedLessons(initialDemoProgress);
       }
@@ -328,13 +390,6 @@ export default function StudentApp() {
   // Seleciona um curso ativo na plataforma
   const handleSelectCourse = async (courseId: string) => {
     setSelectedCourseId(courseId);
-    const targetCourse = await getCourseData(courseId);
-    startTransition(() => {
-      setCourse(targetCourse);
-      if (targetCourse.lessons.length > 0) {
-        setCurrentLesson(targetCourse.lessons[0]);
-      }
-    });
 
     if (user?.uid) {
       const progressData = await getUserProgress(user.uid, courseId);
@@ -414,6 +469,7 @@ export default function StudentApp() {
 
   // Permite ao administrador salvar um novo link de vídeo para a aula
   const handleUpdateLessonVideoUrl = async (lessonId: string, videoUrl: string) => {
+    if (isDemoUser(user) || user?.role !== "admin") return;
     await saveLessonVideoUrl(lessonId, videoUrl, course.id);
     await reloadAllCourses();
     showToast("Link do vídeo atualizado com sucesso!");
@@ -421,31 +477,56 @@ export default function StudentApp() {
 
   // Abre uma aula específica no reprodutor de vídeo
   const handleSelectLesson = (lesson: Lesson) => {
-    setCurrentLesson(lesson);
+    if (isDemoUser(user)) {
+      // Garante que o Aluno Demonstração nunca receba links de vídeo
+      setSelectedLesson({
+        ...lesson,
+        videoUrl: "",
+        youtubeUrl: "",
+      });
+    } else {
+      setSelectedLesson(lesson);
+    }
     setCurrentTab("lesson");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // =====================================================================
-  // CÁLCULOS DE ACESSO E PROGRESSO
+  // CÁLCULOS DE ACESSO E PROGRESSO (MEMOIZADOS PARA MÁXIMA PERFORMANCE)
   // =====================================================================
 
+  // Validação estrita de administrador (Aluno Demonstração nunca é admin)
+  const isAdmin = useMemo(
+    () => user?.role === "admin" && !isDemoUser(user),
+    [user]
+  );
+
   // Lista dos cursos liberados para o aluno visualizar no menu e no dashboard
-  const accessibleCourseIds = getUserAccessibleCourseIds(user);
-  const enrolledCoursesList =
-    user?.role === "admin"
+  const accessibleCourseIds = useMemo(
+    () => getUserAccessibleCourseIds(user),
+    [user]
+  );
+
+  const enrolledCoursesList = useMemo(() => {
+    return isAdmin
       ? allCourses
       : allCourses.filter((c) => accessibleCourseIds.includes(c.id));
+  }, [isAdmin, allCourses, accessibleCourseIds]);
 
   // Valida se o aluno possui acesso ao curso ativo
-  const hasAccess = checkUserCourseAccess(user, course.id);
+  const hasAccess = useMemo(
+    () => checkUserCourseAccess(user, course.id),
+    [user, course.id]
+  );
 
   // Métricas do curso atual
   const lessons = course.lessons || [];
   const totalLessons = lessons.length;
   const completedCount = completedLessons.length;
-  const progressPercent =
-    totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+  const progressPercent = useMemo(
+    () => (totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0),
+    [totalLessons, completedCount]
+  );
 
   // =====================================================================
   // RENDERIZAÇÃO: TELAS ESPECIAIS (LOADING, LOGIN E BLOQUEIO)
@@ -454,14 +535,14 @@ export default function StudentApp() {
   // 1. Tela de Carregamento Inicial do Firebase Auth
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0b0f19] flex flex-col items-center justify-center p-4 transition-colors">
         <div className="w-12 h-12 bg-[#ea580c] rounded-xl flex items-center justify-center shadow-lg shadow-orange-600/30 animate-bounce mb-4">
           <span className="text-white font-black text-xl">VL</span>
         </div>
-        <p className="text-sm font-semibold text-slate-700">
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           Carregando plataforma VL AUTOMAÇÕES...
         </p>
-        <p className="text-xs text-slate-400 mt-1">Conectando ao Firebase</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Conectando ao Firebase</p>
       </div>
     );
   }
@@ -479,22 +560,22 @@ export default function StudentApp() {
   // 3. Se o acesso geral do aluno estiver bloqueado (accessEnabled === false)
   if (user.accessEnabled === false && user.role !== "admin") {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-6 text-center">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto">
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0b0f19] flex flex-col items-center justify-center p-6 text-center transition-colors duration-200">
+        <div className="max-w-md w-full bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto border border-red-200 dark:border-red-900/60">
             <span className="text-2xl font-black">!</span>
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             Acesso à plataforma bloqueado
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
             Seu acesso à plataforma VL Automações está temporariamente desativado. Entre em contato com a administração para regularizar o acesso.
           </p>
           <div className="pt-2">
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black text-white text-xs sm:text-sm font-bold rounded-xl transition-colors cursor-pointer"
+              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black dark:bg-[#ea580c] dark:hover:bg-[#c2410c] text-white text-xs sm:text-sm font-bold rounded-xl transition-colors cursor-pointer"
             >
               Sair da conta
             </button>
@@ -508,7 +589,7 @@ export default function StudentApp() {
   // RENDERIZAÇÃO: ÁREA DO ALUNO COMPLETA
   // =====================================================================
   return (
-    <div id="vl-student-platform" className="min-h-screen bg-[#f8fafc] flex">
+    <div id="vl-student-platform" className="min-h-screen bg-[#f8fafc] dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 flex transition-colors duration-200">
       {/* Menu Lateral de Navegação */}
       <Sidebar
         currentTab={currentTab}
@@ -538,7 +619,7 @@ export default function StudentApp() {
         {toastMessage && (
           <div
             id="vl-toast-notification"
-            className="fixed bottom-6 right-6 z-50 bg-[#0f172a] text-white text-xs sm:text-sm font-medium px-4 py-3 rounded-xl shadow-xl border border-slate-700 flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-300"
+            className="fixed bottom-6 right-6 z-50 bg-[#0f172a] dark:bg-slate-800 text-white text-xs sm:text-sm font-medium px-4 py-3 rounded-xl shadow-xl border border-slate-700 dark:border-slate-600 flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-300"
           >
             <span className="w-2 h-2 rounded-full bg-[#ea580c]" />
             <span>{toastMessage}</span>
@@ -602,7 +683,7 @@ export default function StudentApp() {
               completedForms={completedForms}
               onToggleComplete={handleToggleLessonComplete}
               onToggleFormComplete={handleToggleFormComplete}
-              onSelectLesson={(lesson) => setCurrentLesson(lesson)}
+              onSelectLesson={handleSelectLesson}
               onGoToCourse={() => setCurrentTab("course")}
               user={user}
               hasAccess={hasAccess}
@@ -667,7 +748,7 @@ export default function StudentApp() {
           )}
 
           {/* 9. Painel Administrativo */}
-          {currentTab === "admin" && (
+          {currentTab === "admin" && isAdmin && (
             <AdminView
               course={course}
               onRefreshCourse={reloadAllCourses}

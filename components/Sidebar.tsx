@@ -24,7 +24,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
-import { getUserAccessibleCourseIds } from "@/lib/courseService";
+import { getUserAccessibleCourseIds, isDemoUser } from "@/lib/courseService";
 import { PLATFORM_NOTICES } from "@/lib/constants";
 
 export type TabType =
@@ -76,8 +76,8 @@ export function Sidebar({
     { id: "help", label: "Ajuda", icon: Lightbulb },
   ];
 
-  // Exibe o painel administrativo exclusivamente para usuários com role === "admin"
-  const isAdmin = user?.role === "admin";
+  // Exibe o painel administrativo exclusivamente para usuários com role === "admin" (nunca para o aluno demo)
+  const isAdmin = user?.role === "admin" && !isDemoUser(user);
   if (isAdmin) {
     navItems.push({ id: "admin", label: "Painel Admin", icon: ShieldCheck });
   }
@@ -101,13 +101,13 @@ export function Sidebar({
       {/* Container da Barra Lateral: Visual Claro, Limpo e Moderno */}
       <aside
         id="vl-sidebar"
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-white text-slate-800 flex flex-col justify-between border-r border-slate-200/80 transition-transform duration-200 ease-in-out ${
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-200 flex flex-col justify-between border-r border-slate-200/80 dark:border-slate-800 transition-colors duration-200 ${
           isOpenMobile ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div>
           {/* Topo com logotipo limpo */}
-          <div className="p-5 flex items-center justify-between border-b border-slate-100">
+          <div className="p-5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2.5">
               <div
                 id="vl-sidebar-logo-icon"
@@ -118,10 +118,10 @@ export function Sidebar({
                 </span>
               </div>
               <div>
-                <span className="text-slate-900 font-bold text-sm tracking-tight block">
+                <span className="text-slate-900 dark:text-white font-bold text-sm tracking-tight block">
                   VL AUTOMAÇÕES
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium block">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block">
                   Plataforma EAD
                 </span>
               </div>
@@ -132,7 +132,7 @@ export function Sidebar({
               id="btn-close-sidebar-mobile"
               type="button"
               onClick={onCloseMobile}
-              className="lg:hidden text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+              className="lg:hidden text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               aria-label="Fechar menu"
             >
               <X className="w-5 h-5" />
@@ -156,18 +156,18 @@ export function Sidebar({
                   onClick={() => handleNavClick(item.id)}
                   className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
                     isActive
-                      ? "bg-orange-50 text-[#ea580c] font-semibold"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                      ? "bg-orange-50 dark:bg-orange-950/40 text-[#ea580c] dark:text-orange-400 font-semibold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60"
                   }`}
                 >
                   <Icon
                     className={`w-4 h-4 shrink-0 ${
-                      isActive ? "text-[#ea580c]" : "text-slate-400"
+                      isActive ? "text-[#ea580c] dark:text-orange-400" : "text-slate-400 dark:text-slate-500"
                     }`}
                   />
                   <span className="flex-1 text-left">{item.label}</span>
                   {item.id === "notices" && noticesCount > 0 && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-[#ea580c]">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-[#ea580c] dark:text-orange-400">
                       {noticesCount}
                     </span>
                   )}
@@ -178,11 +178,11 @@ export function Sidebar({
         </div>
 
         {/* Rodapé: Perfil e Logout */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2.5 mb-3 px-1">
             <div
               id="vl-user-avatar-circle"
-              className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0"
+              className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300/60 dark:border-slate-700 flex items-center justify-center font-bold text-xs shrink-0"
             >
               {user?.displayName
                 ? user.displayName.charAt(0).toUpperCase()
@@ -191,10 +191,10 @@ export function Sidebar({
                 : "A"}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-800 truncate">
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
                 {user?.displayName || "Aluno"}
               </p>
-              <p className="text-[11px] text-slate-400 truncate">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
                 {user?.email || "aluno@vlautomacao.com"}
               </p>
             </div>
@@ -204,7 +204,7 @@ export function Sidebar({
             id="btn-sidebar-logout"
             type="button"
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sair</span>

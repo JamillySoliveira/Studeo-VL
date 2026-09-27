@@ -23,6 +23,56 @@ import {
 import { UserProfile, UserProgress } from "./types";
 import { INITIAL_COURSE_ID } from "./courseData";
 
+// =======================================================================
+// CACHE EM MEMÓRIA E DEDUPLICAÇÃO DE REQUISIÇÕES (ALTA PERFORMANCE)
+// =======================================================================
+
+// Cache de progresso do aluno por chave `{userId}_{courseId}`
+const progressCache = new Map<
+  string,
+  { data: UserProgress; timestamp: number }
+>();
+
+// Mapa de promessas ativas para evitar chamadas simultâneas idênticas ao Firestore
+const inFlightProgressPromises = new Map<string, Promise<UserProgress>>();
+
+// TTL do cache em memória (60 segundos de acesso instantâneo sem rede)
+const PROGRESS_CACHE_TTL = 60 * 1000;
+
+// Cache do perfil de permissões do usuário
+const profileCache = new Map<
+  string,
+  { data: UserProfile | null; timestamp: number }
+>();
+const inFlightProfilePromises = new Map<string, Promise<UserProfile | null>>();
+const PROFILE_CACHE_TTL = 60 * 1000;
+
+/**
+ * Limpa o cache de progresso de um aluno ou de todos.
+ */
+export function clearProgressCache(userId?: string): void {
+  if (userId) {
+    for (const key of progressCache.keys()) {
+      if (key.startsWith(`${userId}_`)) {
+        progressCache.delete(key);
+      }
+    }
+  } else {
+    progressCache.clear();
+  }
+}
+
+/**
+ * Limpa o cache do perfil de um usuário.
+ */
+export function clearUserProfileCache(userId?: string): void {
+  if (userId) {
+    profileCache.delete(userId);
+  } else {
+    profileCache.clear();
+  }
+}
+
 /**
  * Salva ou atualiza os dados básicos do usuário no Firestore.
  * 
@@ -78,74 +128,114 @@ export async function getUserProgress(
   userId: string,
   courseId: string
 ): Promise<UserProgress> {
-  const fallbackKey = `vl_progress_${userId}_${courseId}`;
-  const fallbackFormsKey = `vl_progress_forms_${userId}_${courseId}`;
-  
-  // 1. Tenta ler o documento oficial salvo no Cloud Firestore
-  try {
-    const progressDocRef = doc(db, "progress", `${userId}_${courseId}`);
-    let snapshot = await getDoc(progressDocRef);
+  const cacheKey = `${userId}_${courseId}`;
 
-    // Compatibilidade com dados legados para alunos que já utilizavam a plataforma
-    if (!snapshot.exists() && courseId === "rockwell-basico") {
-      const legacyDocRef = doc(db, "progress", `${userId}_rockwell-controle-analogico-supervisorio`);
-      const legacySnapshot = await getDoc(legacyDocRef);
-      if (legacySnapshot.exists()) {
-        snapshot = legacySnapshot;
-      }
-    }
-
-    if (snapshot.exists()) {
-      const data = snapshot.data() as UserProgress;
-      // Salva uma cópia atualizada no localStorage para acesso offline imediato
-      if (typeof window !== "undefined") {
-        localStorage.setItem(fallbackKey, JSON.stringify(data.completedLessons || []));
-        localStorage.setItem(fallbackFormsKey, JSON.stringify(data.completedForms || []));
-      }
-      return {
-        userId,
-        courseId,
-        completedLessons: data.completedLessons || [],
-        completedForms: data.completedForms || [],
-        isCompleted: !!data.isCompleted,
-        completedAt: data.completedAt,
-        lastLessonId: data.lastLessonId,
-        updatedAt: data.updatedAt,
-      };
-    }
-  } catch (error) {
-    console.warn("Aviso ao buscar progresso do Firestore. Usando cache local:", error);
+  // 1. Verifica cache em memória ultra-rápido (evita consulta de rede)
+  const cached = progressCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < PROGRESS_CACHE_TTL) {
+    return cached.data;
   }
 
-  // 2. Fallback: se não encontrar no Firestore ou houver erro, carrega do localStorage
-  let localCompleted: string[] = [];
-  let localFormsCompleted: string[] = [];
-  if (typeof window !== "undefined") {
+  // 2. Se já existir uma requisição ativa idêntica em andamento, compartilha a mesma Promise
+  if (inFlightProgressPromises.has(cacheKey)) {
+    return inFlightProgressPromises.get(cacheKey)!;
+  }
+
+  const fetchPromise = (async (): Promise<UserProgress> => {
+    const fallbackKey = `vl_progress_${userId}_${courseId}`;
+    const fallbackFormsKey = `vl_progress_forms_${userId}_${courseId}`;
+
+    // 1. Tenta ler o documento oficial salvo no Cloud Firestore
     try {
-      const saved = localStorage.getItem(fallbackKey);
-      if (saved) {
-        localCompleted = JSON.parse(saved);
-      } else if (courseId === "rockwell-basico") {
-        const legacySaved = localStorage.getItem(`vl_progress_${userId}_rockwell-controle-analogico-supervisorio`);
-        if (legacySaved) localCompleted = JSON.parse(legacySaved);
+      const progressDocRef = doc(db, "progress", `${userId}_${courseId}`);
+      let snapshot = await getDoc(progressDocRef);
+
+      // Compatibilidade com dados legados para alunos que já utilizavam a plataforma
+      if (!snapshot.exists() && courseId === "rockwell-basico") {
+        const legacyDocRef = doc(
+          db,
+          "progress",
+          `${userId}_rockwell-controle-analogico-supervisorio`
+        );
+        const legacySnapshot = await getDoc(legacyDocRef);
+        if (legacySnapshot.exists()) {
+          snapshot = legacySnapshot;
+        }
       }
 
-      const savedForms = localStorage.getItem(fallbackFormsKey);
-      if (savedForms) {
-        localFormsCompleted = JSON.parse(savedForms);
+      if (snapshot.exists()) {
+        const data = snapshot.data() as UserProgress;
+        const result: UserProgress = {
+          userId,
+          courseId,
+          completedLessons: data.completedLessons || [],
+          completedForms: data.completedForms || [],
+          isCompleted: !!data.isCompleted,
+          completedAt: data.completedAt,
+          lastLessonId: data.lastLessonId,
+          updatedAt: data.updatedAt,
+        };
+
+        // Salva cópia no localStorage para offline
+        if (typeof window !== "undefined") {
+          localStorage.setItem(
+            fallbackKey,
+            JSON.stringify(result.completedLessons)
+          );
+          localStorage.setItem(
+            fallbackFormsKey,
+            JSON.stringify(result.completedForms)
+          );
+        }
+
+        // Alimenta o cache em memória
+        progressCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
       }
-    } catch (e) {
-      console.error("Erro ao ler progresso do cache local:", e);
+    } catch (error) {
+      console.warn("Aviso ao buscar progresso do Firestore. Usando cache local:", error);
     }
-  }
 
-  return {
-    userId,
-    courseId,
-    completedLessons: localCompleted,
-    completedForms: localFormsCompleted,
-    isCompleted: false,
-  };
+    // 2. Fallback: se não encontrar no Firestore ou houver erro, carrega do localStorage
+    let localCompleted: string[] = [];
+    let localFormsCompleted: string[] = [];
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(fallbackKey);
+        if (saved) {
+          localCompleted = JSON.parse(saved);
+        } else if (courseId === "rockwell-basico") {
+          const legacySaved = localStorage.getItem(
+            `vl_progress_${userId}_rockwell-controle-analogico-supervisorio`
+          );
+          if (legacySaved) localCompleted = JSON.parse(legacySaved);
+        }
+
+        const savedForms = localStorage.getItem(fallbackFormsKey);
+        if (savedForms) {
+          localFormsCompleted = JSON.parse(savedForms);
+        }
+      } catch (e) {
+        console.error("Erro ao ler progresso do cache local:", e);
+      }
+    }
+
+    const fallbackResult: UserProgress = {
+      userId,
+      courseId,
+      completedLessons: localCompleted,
+      completedForms: localFormsCompleted,
+      isCompleted: false,
+    };
+
+    progressCache.set(cacheKey, { data: fallbackResult, timestamp: Date.now() });
+    return fallbackResult;
+  })().finally(() => {
+    inFlightProgressPromises.delete(cacheKey);
+  });
+
+  inFlightProgressPromises.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
 /**
@@ -215,6 +305,22 @@ export async function toggleLessonProgress(
   if (typeof window !== "undefined") {
     localStorage.setItem(fallbackKey, JSON.stringify(updatedList));
   }
+
+  // Atualiza cache em memória imediatamente
+  const cacheKey = `${userId}_${courseId}`;
+  progressCache.set(cacheKey, {
+    data: {
+      userId,
+      courseId,
+      completedLessons: updatedList,
+      completedForms: currentFormsCompleted,
+      lastLessonId: lessonId,
+      isCompleted: isCourseCompleted,
+      updatedAt: payload.updatedAt,
+      completedAt: payload.completedAt,
+    },
+    timestamp: Date.now(),
+  });
 
   // Grava no Cloud Firestore
   try {
@@ -291,6 +397,21 @@ export async function toggleFormProgress(
     localStorage.setItem(fallbackFormsKey, JSON.stringify(updatedFormsList));
   }
 
+  // Atualiza cache em memória imediatamente
+  const formCacheKey = `${userId}_${courseId}`;
+  progressCache.set(formCacheKey, {
+    data: {
+      userId,
+      courseId,
+      completedLessons: currentLessonsCompleted,
+      completedForms: updatedFormsList,
+      isCompleted: isCourseCompleted,
+      updatedAt: payload.updatedAt,
+      completedAt: payload.completedAt,
+    },
+    timestamp: Date.now(),
+  });
+
   // Salva no Firestore
   try {
     const progressDocRef = doc(db, "progress", `${userId}_${courseId}`);
@@ -325,16 +446,36 @@ export async function toggleFormProgress(
  * - Papel no sistema (student ou admin)
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
-  try {
-    const userRef = doc(db, "users", userId);
-    const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      return snap.data() as UserProfile;
-    }
-  } catch (err) {
-    console.warn("Aviso ao carregar perfil do Firestore:", err);
+  const cached = profileCache.get(userId);
+  if (cached && Date.now() - cached.timestamp < PROFILE_CACHE_TTL) {
+    return cached.data;
   }
-  return null;
+
+  if (inFlightProfilePromises.has(userId)) {
+    return inFlightProfilePromises.get(userId)!;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const userRef = doc(db, "users", userId);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
+        profileCache.set(userId, { data, timestamp: Date.now() });
+        return data;
+      }
+      profileCache.set(userId, { data: null, timestamp: Date.now() });
+      return null;
+    } catch (err) {
+      console.warn("Aviso ao carregar perfil do Firestore:", err);
+      return null;
+    }
+  })().finally(() => {
+    inFlightProfilePromises.delete(userId);
+  });
+
+  inFlightProfilePromises.set(userId, fetchPromise);
+  return fetchPromise;
 }
 
 /**
