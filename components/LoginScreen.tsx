@@ -251,7 +251,7 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
           {/* Nota informativa de rodapé */}
           <div className="mt-8 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
             <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-              O acesso aos cursos é liberado através do sistema de permissões da VL Automações.
+              O acesso aos cursos é liberado através do sistema de permissões da VL Automação.
             </p>
           </div>
         </div>

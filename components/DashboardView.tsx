@@ -393,7 +393,7 @@ export function DashboardView({
                   </div>
 
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    {c.subtitle || "Aprimore seus conhecimentos em automação industrial com a metodologia VL Automações."}
+                    {c.subtitle || "Aprimore seus conhecimentos em automação industrial com a metodologia VL Automação."}
                   </p>
                 </div>
 
@@ -497,11 +497,11 @@ export function DashboardView({
                     Vídeo explicativo da plataforma
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
-                    Configure o link do Google Drive na constante{" "}
+
                     <code className="text-[#ea580c] font-semibold bg-orange-50 dark:bg-orange-950/40 px-1 py-0.5 rounded">
-                      SUPPORT_VIDEO_URL
+                  
                     </code>{" "}
-                    no arquivo do Dashboard para visualizar o vídeo aqui.
+                   
                   </p>
                 </div>
               )}

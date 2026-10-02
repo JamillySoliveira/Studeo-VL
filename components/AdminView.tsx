@@ -217,7 +217,7 @@ function LessonFormModal({
           {/* Vídeo do Google Drive ou YouTube */}
           <div>
             <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1">
-              Vídeo do Google Drive (ou YouTube):
+             
             </label>
             <input
               type="text"
@@ -227,7 +227,7 @@ function LessonFormModal({
               className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
             />
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-              Cole o link de compartilhamento do Google Drive ou o link de um vídeo do YouTube.
+             
             </p>
           </div>
 
@@ -916,7 +916,7 @@ export function AdminView({
             </h3>
             <ol className="text-xs text-amber-900/90 dark:text-amber-300/90 list-decimal list-inside space-y-1 leading-relaxed">
               <li>O aluno visualiza um curso bloqueado e clica em <strong>[ OBTER ACESSO AO CURSO ]</strong>.</li>
-              <li>O aluno é direcionado ao WhatsApp da VL Automações com mensagem pronta.</li>
+              <li>O aluno é direcionado ao WhatsApp da VL Automação com mensagem pronta.</li>
               <li>Após o pagamento fora da plataforma, você acessa a aba <strong>Alunos</strong>.</li>
               <li>Localize o aluno, marque a caixa do curso (☑ Básico, ☑ Intermediário, ☑ Avançado) e clique em <strong>Salvar Cursos</strong>.</li>
               <li>O curso é liberado imediatamente para o aluno em tempo real!</li>

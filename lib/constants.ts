@@ -40,7 +40,7 @@ export const WHATSAPP_COURSE_MESSAGES: Record<string, string> = {
 export function getCourseWhatsAppUrl(courseId: string): string {
   const message =
     WHATSAPP_COURSE_MESSAGES[courseId] ||
-    "Olá! Gostaria de obter acesso ao curso da VL Automações.";
+    "Olá! Gostaria de obter acesso ao curso da VL Automação.";
   const encodedText = encodeURIComponent(message);
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodedText}`;
 }

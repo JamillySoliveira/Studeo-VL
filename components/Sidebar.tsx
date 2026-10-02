@@ -120,7 +120,7 @@ const noticesCount = getStoredNotices().filter((notice) =>
               </div>
               <div>
                 <span className="text-slate-900 dark:text-white font-bold text-sm tracking-tight block">
-                  VL AUTOMAÇÕES
+                  VL AUTOMAÇÃO
                 </span>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block">
                   Plataforma EAD

@@ -78,7 +78,7 @@ export function CourseView({
               {course.title}
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Você ainda não possui acesso liberado a este curso. Para adquirir seu acesso e iniciar as aulas, converse com o instrutor da VL Automações pelo WhatsApp oficial.
+              Você ainda não possui acesso liberado a este curso. Para adquirir seu acesso e iniciar as aulas, converse com o instrutor da VL Automação pelo WhatsApp oficial.
             </p>
           </div>
 
@@ -238,7 +238,7 @@ export function CourseView({
                         Aulas em preparação
                       </h4>
                       <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                        As aulas deste curso estão sendo preparadas e serão disponibilizadas em breve pelo instrutor da VL Automações.
+                        As aulas deste curso estão sendo preparadas e serão disponibilizadas em breve pelo instrutor da VL Automação.
                       </p>
                     </div>
                   ) : (

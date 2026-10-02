@@ -545,7 +545,7 @@ export default function StudentApp() {
           <span className="text-white font-black text-xl">VL</span>
         </div>
         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Carregando plataforma VL AUTOMAÇÕES...
+          Carregando plataforma VL AUTOMAÇÃO...
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Conectando ao Firebase</p>
       </div>
