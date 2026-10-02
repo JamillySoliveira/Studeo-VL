@@ -141,7 +141,7 @@ export const AVAILABLE_COURSES: Course[] = [
   {
     id: "rockwell-basico",
     title: "Programação Rockwell - Básico",
-    subtitle: "Fundamentos de ControlLogix, Studio 5000, comunicação RSLinx e lógica ladder",
+    subtitle: "Fundamentos de CompactLogix, RS Logix 5000, Comunicação RSLinx e Lógica Ladder",
     description:
       "Aprenda na prática a arquitetura ControlLogix e CompactLogix da Rockwell Automation com Studio 5000. Domine escalonamento analógico 4-20mA/0-10V, sintonia de malhas PID, parametrização de inversores PowerFlex via Ethernet/IP e criação de telas de supervisório no FactoryTalk View.",
     category: "Automação Industrial & CLPs",
