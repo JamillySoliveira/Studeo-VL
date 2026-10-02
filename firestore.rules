@@ -11,10 +11,36 @@ service cloud.firestore {
       );
     }
 
-    // Regra para usuários: aluno acessa seu perfil; admin visualiza todos
+    // Regra para usuários:
+    // - Leitura: aluno acessa seu perfil; admin visualiza todos
+    // - Criação: usuário autenticado só cria o próprio users/{uid}, como student e com accessEnabled: false
+    // - Atualização: somente admin altera role, accessEnabled, courseAccess e enrolledCourses
+    // - Exclusão: somente admin
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      
+      allow create: if request.auth != null && (
+        isAdmin() || (
+          request.auth.uid == userId &&
+          request.resource.data.uid == userId &&
+          request.resource.data.role == 'student' &&
+          request.resource.data.accessEnabled == false
+        )
+      );
+
+      allow update: if request.auth != null && (
+        isAdmin() || (
+          request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'role',
+            'accessEnabled',
+            'courseAccess',
+            'enrolledCourses'
+          ])
+        )
+      );
+
+      allow delete: if isAdmin();
     }
     
     // Cursos, Módulos e Aulas: leitura permitida para todos autenticados, edição exclusiva para admin

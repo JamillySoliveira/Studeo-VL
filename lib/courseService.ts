@@ -210,19 +210,28 @@ export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
   const enrolled = Array.isArray(user.enrolledCourses) ? user.enrolledCourses : [];
   const accessible: string[] = [];
 
-  // Verifica cada curso liberado no perfil do aluno
-  if (
+  // Verifica cada curso liberado no perfil do aluno (suporte a enrolledCourses e courseAccess)
+  const hasRockwellBasico =
     enrolled.includes("rockwell-basico") ||
-    enrolled.includes("rockwell-controle-analogico-supervisorio")
-  ) {
+    enrolled.includes("rockwell-controle-analogico-supervisorio") ||
+    user.courseAccess?.["rockwell-controle-analogico-supervisorio"] === true ||
+    user.courseAccess?.["rockwell-basico"] === true;
+
+  if (hasRockwellBasico) {
     accessible.push("rockwell-basico");
   }
 
-  if (enrolled.includes("rockwell-intermediario")) {
+  if (
+    enrolled.includes("rockwell-intermediario") ||
+    user.courseAccess?.["rockwell-intermediario"] === true
+  ) {
     accessible.push("rockwell-intermediario");
   }
 
-  if (enrolled.includes("rockwell-avancado")) {
+  if (
+    enrolled.includes("rockwell-avancado") ||
+    user.courseAccess?.["rockwell-avancado"] === true
+  ) {
     accessible.push("rockwell-avancado");
   }
 
@@ -1078,6 +1087,13 @@ export async function updateUserEnrolledCourses(
     const userRef = doc(db, "users", userId);
     await updateDoc(userRef, {
       enrolledCourses,
+      courseAccess: {
+        "rockwell-controle-analogico-supervisorio":
+          enrolledCourses.includes("rockwell-basico") ||
+          enrolledCourses.includes("rockwell-controle-analogico-supervisorio"),
+        "rockwell-intermediario": enrolledCourses.includes("rockwell-intermediario"),
+        "rockwell-avancado": enrolledCourses.includes("rockwell-avancado"),
+      },
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {

@@ -378,7 +378,14 @@ export function AdminView({
           // Registra rascunho apenas para estudantes (excluindo administradores)
           data.forEach((u) => {
             if (u.role !== "admin") {
-              drafts[u.uid] = u.enrolledCourses || ["rockwell-basico"];
+              const enrolled = Array.isArray(u.enrolledCourses) ? [...u.enrolledCourses] : [];
+              if (
+                u.courseAccess?.["rockwell-controle-analogico-supervisorio"] &&
+                !enrolled.includes("rockwell-basico")
+              ) {
+                enrolled.push("rockwell-basico");
+              }
+              drafts[u.uid] = enrolled;
             }
           });
           setEnrolledDrafts(drafts);

@@ -40,6 +40,7 @@ import {
   getUserProgress,
   getUserCoursesProgressMap,
   syncUserProfile,
+  clearUserProfileCache,
   toggleLessonProgress,
   toggleFormProgress,
   getUserProfile,
@@ -266,34 +267,38 @@ export default function StudentApp() {
       auth,
       async (firebaseUser: User | null) => {
         if (firebaseUser) {
-          // Identifica conta mestre oficial de administração
-          const isAdminEmail =
-            firebaseUser.email === "adm.vlautomacao@gmail.com";
+          try {
+            // Sincroniza imediatamente o usuário com o Firestore
+            await syncUserProfile({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              photoURL: firebaseUser.photoURL,
+            });
+          } catch (syncErr) {
+            console.error("Erro ao sincronizar usuário no Firestore (onAuthStateChanged):", syncErr);
+          }
 
-          const studentProfile: UserProfile = {
+          // 11. Limpa o cache antes de carregar o perfil oficial
+          clearUserProfileCache(firebaseUser.uid);
+
+          // Lê permissões e dados oficiais salvos no documento do usuário no Firestore
+          const dbProfile = await getUserProfile(firebaseUser.uid);
+
+          const studentProfile: UserProfile = dbProfile || {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName:
               firebaseUser.displayName ||
               (firebaseUser.email ? firebaseUser.email.split("@")[0] : "Aluno"),
             photoURL: firebaseUser.photoURL,
-            role: isAdminEmail ? "admin" : "student",
-            accessEnabled: true,
-            enrolledCourses: [INITIAL_COURSE_ID],
+            role: "student",
+            accessEnabled: false,
+            courseAccess: {
+              "rockwell-controle-analogico-supervisorio": false,
+            },
+            createdAt: new Date().toISOString(),
           };
-
-          // Salva/sincroniza o usuário na coleção "users"
-          await syncUserProfile(studentProfile);
-
-          // Lê permissões salvas no documento do usuário no Firestore
-          const dbProfile = await getUserProfile(firebaseUser.uid);
-          if (dbProfile) {
-            studentProfile.accessEnabled = dbProfile.accessEnabled;
-            studentProfile.role = dbProfile.role || studentProfile.role;
-            studentProfile.enrolledCourses = dbProfile.enrolledCourses || [
-              INITIAL_COURSE_ID,
-            ];
-          }
 
           // Aluno Demonstração nunca possui papel de administrador
           if (isDemoUser(studentProfile)) {

@@ -14,6 +14,7 @@
 import React, { useState } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
+import { syncUserProfile } from "@/lib/studentService";
 import {
   Lock,
   CheckCircle2,
@@ -54,7 +55,16 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
     setSuccessMessage("");
     try {
       setLoading(true);
-      await signInWithPopup(auth, googleProvider);
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      if (userCredential?.user) {
+        // Executa syncUserProfile imediatamente após confirmação do login com Google
+        await syncUserProfile({
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          displayName: userCredential.user.displayName,
+          photoURL: userCredential.user.photoURL,
+        });
+      }
       setSuccessMessage("Autenticado com sucesso! Carregando seus cursos...");
       onSuccess?.();
     } catch (err: any) {

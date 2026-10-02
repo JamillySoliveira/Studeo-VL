@@ -19,7 +19,9 @@ export interface UserProfile {
   role?: "student" | "admin";
   createdAt?: string;
   accessEnabled?: boolean;
+  courseAccess?: Record<string, boolean>;
   enrolledCourses?: string[];
+  updatedAt?: string;
 }
 
 export interface Lesson {

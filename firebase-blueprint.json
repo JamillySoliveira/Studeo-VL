@@ -8,8 +8,12 @@
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
         "role": { "type": "string" },
         "createdAt": { "type": "string" },
+        "courseAccess": {
+          "type": "object"
+        },
         "enrolledCourses": {
           "type": "array",
           "items": { "type": "string" }
