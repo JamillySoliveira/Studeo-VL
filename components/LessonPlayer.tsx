@@ -39,7 +39,7 @@ import { isDemoUser } from "@/lib/courseService";
 
 interface LessonPlayerProps {
   course: Course;
-  currentLesson: Lesson;
+  currentLesson: Lesson | null;
   completedLessons: string[];
   completedForms?: string[];
   onToggleComplete: (lessonId: string) => void;
@@ -155,6 +155,30 @@ export function LessonPlayer({
 
   // Lista direta das aulas do curso (sem módulos)
   const lessons = course.lessons || [];
+
+  if (!currentLesson || !currentLesson.id || lessons.length === 0) {
+    return (
+      <div id="vl-lesson-player-empty" className="max-w-4xl mx-auto py-12 px-4 text-center">
+        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-8 sm:p-12 shadow-xs space-y-4">
+          <Video className="w-12 h-12 text-slate-400 mx-auto" />
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+            Nenhuma aula cadastrada
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+            Este curso ainda não possui aulas cadastradas no momento.
+          </p>
+          <button
+            type="button"
+            onClick={onGoToCourse}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-bold rounded-xl cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Voltar para as aulas de {course.title}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentIndex = lessons.findIndex((l) => l.id === currentLesson.id);
   const prevLesson = currentIndex > 0 ? lessons[currentIndex - 1] : null;

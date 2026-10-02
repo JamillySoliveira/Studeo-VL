@@ -131,38 +131,43 @@ export default function StudentApp() {
 
   // ID do curso que o aluno está visualizando no momento
   const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_COURSE_ID);
-  // Lista com todos os cursos cadastrados na plataforma
-  const [allCourses, setAllCourses] = useState<Course[]>([INITIAL_COURSE]);
+  // Lista com todos os cursos cadastrados na plataforma (iniciam sem aulas fictícias)
+  const [allCourses, setAllCourses] = useState<Course[]>(() =>
+    AVAILABLE_COURSES.map((c) => ({
+      ...c,
+      lessons: [],
+      totalLessons: 0,
+      modules: [],
+    }))
+  );
 
   // Curso ativo derivado em memória (elimina renders em cascata e sincronizações redundantes)
   const course = useMemo<Course>(() => {
-    return (
-      allCourses.find((c) => c.id === selectedCourseId) ||
-      allCourses[0] ||
-      INITIAL_COURSE
-    );
+    const found = allCourses.find((c) => c.id === selectedCourseId);
+    if (found) return found;
+    const first = allCourses[0];
+    if (first) return first;
+    return {
+      ...INITIAL_COURSE,
+      lessons: [],
+      totalLessons: 0,
+      modules: [],
+    };
   }, [allCourses, selectedCourseId]);
 
   // Aula selecionada atualmente para assistir no reprodutor
-  const [selectedLesson, setSelectedLesson] = useState<Lesson>(
-    INITIAL_COURSE.lessons[0] || {
-      id: "aula-1-1",
-      courseId: "rockwell-basico",
-      title: "Introdução",
-      description: "",
-      videoUrl: "",
-      formUrl: "",
-      order: 1,
-    }
-  );
+  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
 
-  // Aula ativa garantindo pertinência ao curso ativo
-  const currentLesson = useMemo<Lesson>(() => {
+  // Aula ativa garantindo pertinência ao curso ativo e vinda exclusivamente do Firestore
+  const currentLesson = useMemo<Lesson | null>(() => {
     if (!course.lessons || course.lessons.length === 0) {
-      return selectedLesson;
+      return null;
     }
-    const found = course.lessons.find((l) => l.id === selectedLesson.id);
-    return found || course.lessons[0];
+    if (selectedLesson) {
+      const found = course.lessons.find((l) => l.id === selectedLesson.id);
+      if (found) return found;
+    }
+    return course.lessons[0] || null;
   }, [course, selectedLesson]);
 
   // =====================================================================
@@ -354,11 +359,15 @@ export default function StudentApp() {
 
     // Higieniza imediatamente cursos e aulas em memória, removendo URLs de vídeo
     setAllCourses((prev) => sanitizeCoursesForUser(prev, demoUser));
-    setSelectedLesson((prev) => ({
-      ...prev,
-      videoUrl: "",
-      youtubeUrl: "",
-    }));
+    setSelectedLesson((prev) =>
+      prev
+        ? {
+            ...prev,
+            videoUrl: "",
+            youtubeUrl: "",
+          }
+        : null
+    );
 
     setUser(demoUser);
 
@@ -369,9 +378,9 @@ export default function StudentApp() {
         setCompletedForms(progressData.completedForms || []);
       } else {
         const initialDemoProgress = [
-          INITIAL_COURSE.lessons[0]?.id || "aula-1-1",
-          INITIAL_COURSE.lessons[1]?.id || "aula-1-2",
-        ];
+          course.lessons[0]?.id || "aula-1-1",
+          course.lessons[1]?.id || "aula-1-2",
+        ].filter(Boolean);
         setCompletedLessons(initialDemoProgress);
       }
     } catch (e) {

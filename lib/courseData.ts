@@ -147,8 +147,8 @@ export const AVAILABLE_COURSES: Course[] = [
     category: "Automação Industrial & CLPs",
     instructor: "Vicenzo Lemes",
     badge: "",
-    totalLessons: BASIC_ROCKWELL_LESSONS.length,
-    lessons: BASIC_ROCKWELL_LESSONS,
+    totalLessons: 0,
+    lessons: [],
   },
   {
     id: "rockwell-intermediario",

@@ -32,7 +32,6 @@ import {
   AVAILABLE_COURSES,
   INITIAL_COURSE_ID,
   INITIAL_COURSE,
-  BASIC_ROCKWELL_LESSONS,
 } from "./courseData";
 import { clearUserProfileCache } from "./studentService";
 
@@ -42,7 +41,7 @@ import { clearUserProfileCache } from "./studentService";
 const courseCache = new Map<string, { data: Course; timestamp: number }>();
 const inFlightCoursePromises = new Map<string, Promise<Course>>();
 let inFlightAllCourses: Promise<Course[]> | null = null;
-const COURSE_CACHE_TTL = 60 * 1000; // 60 segundos de permanência ultra-rápida em memória
+const COURSE_CACHE_TTL = 15 * 1000; // 15 segundos para garantir atualização rápida após edições do admin
 
 /**
  * Limpa o cache em memória dos cursos.
@@ -325,59 +324,35 @@ export function checkUserCourseAccess(
  * Monta o objeto final do curso combinando dados base, personalizações do Firestore,
  * aulas adicionadas/atualizadas, exclusões e overrides locais.
  */
+/**
+ * Monta o objeto final do curso a partir do Firestore.
+ * O Firestore é a ÚNICA fonte de verdade para aulas e módulos.
+ * Nenhuma aula é inserida a partir de constantes locais ou INITIAL_COURSE.
+ */
 function assembleCourse(
   effectiveCourseId: string,
   baseCourse: Course,
   firestoreCourseData: Partial<Course> | null,
   firestoreLessons: Lesson[],
-  deletedLessonIds: Set<string>,
-  localOverrides: Record<string, Partial<Lesson>>
+  firestoreModules: Module[] = []
 ): Course {
-  const result: Course = JSON.parse(JSON.stringify(baseCourse));
-  result.id = effectiveCourseId;
+  const result: Course = {
+    id: effectiveCourseId,
+    title: firestoreCourseData?.title || baseCourse.title,
+    subtitle: firestoreCourseData?.subtitle || baseCourse.subtitle,
+    description: firestoreCourseData?.description || baseCourse.description,
+    category: firestoreCourseData?.category || baseCourse.category,
+    instructor: firestoreCourseData?.instructor || baseCourse.instructor,
+    badge: firestoreCourseData?.badge || baseCourse.badge || "",
+    totalLessons: 0,
+    lessons: [],
+    certificateUrl: firestoreCourseData?.certificateUrl || undefined,
+    certificateFileName: firestoreCourseData?.certificateFileName || undefined,
+    certificateFileSize: firestoreCourseData?.certificateFileSize || undefined,
+    certificateUploadedAt: firestoreCourseData?.certificateUploadedAt || undefined,
+  };
 
-  if (firestoreCourseData) {
-    if (
-      firestoreCourseData.title &&
-      firestoreCourseData.title !== "Programação Rockwell - Básico"
-    ) {
-      result.title = firestoreCourseData.title;
-    }
-    if (firestoreCourseData.subtitle) {
-      result.subtitle = firestoreCourseData.subtitle;
-    }
-    if (firestoreCourseData.description) {
-      result.description = firestoreCourseData.description;
-    }
-    if (
-      firestoreCourseData.category &&
-      firestoreCourseData.category !== "Automação Industrial & CLPs"
-    ) {
-      result.category = firestoreCourseData.category;
-    }
-    if (firestoreCourseData.instructor) {
-      result.instructor = firestoreCourseData.instructor;
-    }
-    if (
-      firestoreCourseData.badge &&
-      ![
-        "Certificação Profissional",
-        "Especialização Técnica",
-        "Nível Especialista",
-      ].includes(firestoreCourseData.badge)
-    ) {
-      result.badge = firestoreCourseData.badge;
-    }
-    result.certificateUrl = firestoreCourseData.certificateUrl || undefined;
-    result.certificateFileName =
-      firestoreCourseData.certificateFileName || undefined;
-    result.certificateFileSize =
-      firestoreCourseData.certificateFileSize || undefined;
-    result.certificateUploadedAt =
-      firestoreCourseData.certificateUploadedAt || undefined;
-  }
-
-  // Se não houver certificado no Firestore, busca do cache local
+  // Se não houver certificado no Firestore, busca do cache local de certificados
   if (!result.certificateUrl) {
     const localCert = getLocalCourseCertificate(effectiveCourseId);
     if (localCert?.certificateUrl) {
@@ -388,81 +363,65 @@ function assembleCourse(
     }
   }
 
-  // Mescla as aulas base com as atualizações salvas no Firestore e no cache
+  // 1. Apenas aulas que vieram do Firestore e pertencem a este curso
+  // Deduplica por id e garante ordenação correta
   const lessonsMap = new Map<string, Lesson>();
-
-  // NÃO adiciona ao resultado as aulas padrão do INITIAL_COURSE que estejam marcadas como excluídas
-  (baseCourse.lessons || []).forEach((l) => {
-    if (deletedLessonIds.has(l.id)) {
-      return;
-    }
-    lessonsMap.set(l.id, {
-      ...l,
-      courseId: effectiveCourseId,
-    });
-  });
-
-  // Continua incorporando normalmente as aulas existentes no Firestore
   firestoreLessons.forEach((l) => {
-    if (deletedLessonIds.has(l.id)) {
-      return;
+    if (l && l.id && normalizeCourseId(l.courseId) === effectiveCourseId) {
+      lessonsMap.set(l.id, {
+        ...l,
+        courseId: effectiveCourseId,
+        videoUrl: l.videoUrl || l.youtubeUrl || "",
+        youtubeUrl: l.youtubeUrl || l.videoUrl || "",
+        formUrl: l.formUrl || "",
+        title: l.title || "Aula",
+        order: typeof l.order === "number" ? l.order : 1,
+      });
     }
-    if (
-      effectiveCourseId === "rockwell-basico" &&
-      (l.id.startsWith("aula-1-") ||
-        l.id.startsWith("aula-2-") ||
-        l.id.startsWith("aula-3-") ||
-        l.id.startsWith("aula-4-"))
-    ) {
-      return;
-    }
-    const existing = lessonsMap.get(l.id);
-    lessonsMap.set(l.id, {
-      ...(existing || {}),
-      ...l,
-      courseId: effectiveCourseId,
-    });
   });
 
-  // Aplica alterações salvas no cache local
-  const mergedLessons: Lesson[] = Array.from(lessonsMap.values())
-    .filter((lesson) => !deletedLessonIds.has(lesson.id))
-    .map((lesson) => {
-      const local = localOverrides[lesson.id] || {};
-      return {
-        ...lesson,
-        ...local,
+  const validLessons: Lesson[] = Array.from(lessonsMap.values()).sort(
+    (a, b) => (a.order || 0) - (b.order || 0)
+  );
+
+  result.lessons = validLessons;
+  result.totalLessons = validLessons.length;
+
+  // 2. Módulos do Firestore:
+  // Se houver módulos cadastrados no Firestore para este curso, agrupa as aulas
+  const courseModules = (firestoreModules || []).filter(
+    (m) => normalizeCourseId(m.courseId) === effectiveCourseId
+  );
+
+  if (courseModules.length > 0) {
+    result.modules = courseModules
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map((m) => {
+        const moduleLessons = validLessons.filter((l) => l.moduleId === m.id);
+        return {
+          ...m,
+          courseId: effectiveCourseId,
+          lessons: moduleLessons,
+        };
+      });
+  } else {
+    result.modules = [
+      {
+        id: "main",
         courseId: effectiveCourseId,
-        videoUrl: local.videoUrl ?? lesson.videoUrl ?? "",
-        formUrl: local.formUrl ?? lesson.formUrl ?? "",
-        title: local.title ?? lesson.title ?? "",
-        duration: local.duration ?? lesson.duration ?? "",
-      };
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-  result.lessons = mergedLessons;
-  result.totalLessons = mergedLessons.length;
-
-  result.modules = [
-    {
-      id: "main",
-      courseId: effectiveCourseId,
-      title: "Aulas",
-      order: 1,
-      lessons: mergedLessons,
-    },
-  ];
+        title: "Aulas",
+        order: 1,
+        lessons: validLessons,
+      },
+    ];
+  }
 
   return result;
 }
 
 /**
- * Carrega todas as informações de um curso específico:
- * - Informações gerais (título, descrição, instrutor, certificado anexado)
- * - Lista ordenada de todas as aulas vinculadas a ele no Firestore
- * - Aplica os links de vídeo e formulários salvos
- * - Higieniza as URLs de vídeo se o usuário for Aluno Demonstração
+ * Carrega todas as informações de um curso específico diretamente do Cloud Firestore.
+ * O Firestore é a fonte de verdade absoluta para cursos, módulos e aulas.
  */
 export async function getCourseData(
   courseId: string = INITIAL_COURSE_ID,
@@ -470,7 +429,7 @@ export async function getCourseData(
 ): Promise<Course> {
   const effectiveCourseId = normalizeCourseId(courseId);
 
-  // 1. Verifica cache em memória ultra-rápido (0ms latency)
+  // 1. Verifica cache em memória (TTL curto para consistência rápida)
   const cached = courseCache.get(effectiveCourseId);
   if (cached && Date.now() - cached.timestamp < COURSE_CACHE_TTL) {
     return isDemoUser(user)
@@ -484,15 +443,13 @@ export async function getCourseData(
     return isDemoUser(user) ? sanitizeCourseForUser(active, user) : active;
   }
 
-  // 3. Executa a busca otimizada
+  // 3. Executa a busca otimizada diretamente no Firestore
   const fetchPromise = (async (): Promise<Course> => {
-    // Localiza os dados estáticos base do curso
     const baseFound = AVAILABLE_COURSES.find((c) => c.id === effectiveCourseId);
     const baseCourse: Course = baseFound
       ? JSON.parse(JSON.stringify(baseFound))
       : JSON.parse(JSON.stringify(INITIAL_COURSE));
 
-    const localOverrides = getLocalLessonsOverrides();
     const localDeleted = getLocalDeletedLessons();
     const deletedLessonIds = new Set<string>(localDeleted);
 
@@ -523,42 +480,53 @@ export async function getCourseData(
           ? (courseSnapshot.data() as Partial<Course>)
           : null;
 
-      let firestoreLessons: Lesson[] = [];
+      const firestoreLessons: Lesson[] = [];
       if (lessonsSnapshot) {
-        firestoreLessons = lessonsSnapshot.docs
-          .map((item) => {
-            const data = item.data() as Lesson;
-            return {
+        lessonsSnapshot.docs.forEach((item) => {
+          const data = item.data() as Lesson;
+          const lId = item.id || data.id;
+          if (deletedLessonIds.has(lId)) return;
+          if (normalizeCourseId(data.courseId) === effectiveCourseId) {
+            firestoreLessons.push({
               ...data,
-              id: item.id || data.id,
-              courseId: normalizeCourseId(data.courseId),
+              id: lId,
+              courseId: effectiveCourseId,
               videoUrl: data.videoUrl || data.youtubeUrl || "",
               youtubeUrl: data.youtubeUrl || data.videoUrl || "",
               formUrl: data.formUrl || "",
-            };
-          })
-          .filter((lesson) => {
-            if (deletedLessonIds.has(lesson.id)) return false;
-            return normalizeCourseId(lesson.courseId) === effectiveCourseId;
-          });
+            });
+          }
+        });
       }
 
+      const firestoreModules: Module[] = [];
       if (modulesSnapshot) {
         modulesSnapshot.docs.forEach((mDoc) => {
-          const mData = mDoc.data();
+          const mData = mDoc.data() as Module;
           const mCourseId = normalizeCourseId(mData.courseId);
-          if (mCourseId === effectiveCourseId && Array.isArray(mData.lessons)) {
-            mData.lessons.forEach((l: Lesson) => {
-              if (l && l.id && !deletedLessonIds.has(l.id)) {
-                firestoreLessons.push({
-                  ...l,
-                  courseId: effectiveCourseId,
-                  videoUrl: l.videoUrl || l.youtubeUrl || "",
-                  youtubeUrl: l.youtubeUrl || l.videoUrl || "",
-                  formUrl: l.formUrl || "",
-                });
-              }
+          if (mCourseId === effectiveCourseId) {
+            firestoreModules.push({
+              ...mData,
+              id: mDoc.id || mData.id,
+              courseId: effectiveCourseId,
+              lessons: [],
             });
+            if (Array.isArray(mData.lessons)) {
+              mData.lessons.forEach((l: Lesson) => {
+                const lId = l && (l.id || (l as any).uid);
+                if (lId && !deletedLessonIds.has(lId)) {
+                  firestoreLessons.push({
+                    ...l,
+                    id: lId,
+                    courseId: effectiveCourseId,
+                    moduleId: mDoc.id || mData.id,
+                    videoUrl: l.videoUrl || l.youtubeUrl || "",
+                    youtubeUrl: l.youtubeUrl || l.videoUrl || "",
+                    formUrl: l.formUrl || "",
+                  });
+                }
+              });
+            }
           }
         });
       }
@@ -568,8 +536,7 @@ export async function getCourseData(
         baseCourse,
         firestoreCourse,
         firestoreLessons,
-        deletedLessonIds,
-        localOverrides
+        firestoreModules
       );
 
       courseCache.set(effectiveCourseId, {
@@ -578,26 +545,16 @@ export async function getCourseData(
       });
       return built;
     } catch (error) {
-      console.warn("Aviso ao carregar curso. Utilizando dados padrão:", error);
-
-      baseCourse.lessons = (baseCourse.lessons || [])
-        .filter((lesson) => !deletedLessonIds.has(lesson.id))
-        .map((lesson) => {
-          const local = localOverrides[lesson.id] || {};
-          return {
-            ...lesson,
-            ...local,
-            courseId: effectiveCourseId,
-            videoUrl: local.videoUrl ?? lesson.videoUrl ?? "",
-          };
-        });
-
-      baseCourse.totalLessons = baseCourse.lessons.length;
-      courseCache.set(effectiveCourseId, {
-        data: baseCourse,
-        timestamp: Date.now(),
-      });
-      return baseCourse;
+      console.error("Erro ao carregar dados do curso no Firestore:", error);
+      // NUNCA inserir aulas fictícias no fallback
+      const emptyFallback: Course = {
+        ...baseCourse,
+        id: effectiveCourseId,
+        lessons: [],
+        totalLessons: 0,
+        modules: [],
+      };
+      return emptyFallback;
     }
   })().finally(() => {
     inFlightCoursePromises.delete(effectiveCourseId);
@@ -609,9 +566,8 @@ export async function getCourseData(
 }
 
 /**
- * Retorna todos os cursos disponíveis com suas aulas atualizadas.
- * Executa uma ÚNICA consulta em lote (batch fetch) às coleções do Firestore,
- * alimentando o cache de todos os cursos de uma só vez para velocidade máxima.
+ * Retorna todos os cursos disponíveis com suas aulas atualizadas exclusivamente do Firestore.
+ * Executa uma consulta em lote às coleções do Firestore para alta performance.
  */
 export async function getAllCourses(
   user?: UserProfile | null
@@ -628,15 +584,14 @@ export async function getAllCourses(
     return isDemoUser(user) ? sanitizeCoursesForUser(list, user) : list;
   }
 
-  // 2. Se já houver uma busca global em lote em andamento, compartilha
+  // 2. Se já houver uma busca global em lote em andamento, compartilha a promessa
   if (inFlightAllCourses) {
     const res = await inFlightAllCourses;
     return isDemoUser(user) ? sanitizeCoursesForUser(res, user) : res;
   }
 
-  // 3. Busca consolidada em lote (1 única varredura para todos os cursos)
+  // 3. Busca consolidada em lote diretamente no Cloud Firestore
   inFlightAllCourses = (async (): Promise<Course[]> => {
-    const localOverrides = getLocalLessonsOverrides();
     const localDeleted = getLocalDeletedLessons();
     const deletedLessonIds = new Set<string>(localDeleted);
 
@@ -660,14 +615,16 @@ export async function getAllCourses(
         });
       }
 
-      // Mapeia todas as aulas de todos os cursos
+      // Mapeia todas as aulas de todos os cursos que existem no Firestore
       const allFirestoreLessons: Lesson[] = [];
       if (lessonsSnapshot) {
         lessonsSnapshot.docs.forEach((item) => {
           const data = item.data() as Lesson;
+          const lId = item.id || data.id;
+          if (deletedLessonIds.has(lId)) return;
           allFirestoreLessons.push({
             ...data,
-            id: item.id || data.id,
+            id: lId,
             courseId: normalizeCourseId(data.courseId),
             videoUrl: data.videoUrl || data.youtubeUrl || "",
             youtubeUrl: data.youtubeUrl || data.videoUrl || "",
@@ -676,16 +633,26 @@ export async function getAllCourses(
         });
       }
 
+      const allFirestoreModules: Module[] = [];
       if (modulesSnapshot) {
         modulesSnapshot.docs.forEach((mDoc) => {
-          const mData = mDoc.data();
+          const mData = mDoc.data() as Module;
           const mCourseId = normalizeCourseId(mData.courseId);
+          allFirestoreModules.push({
+            ...mData,
+            id: mDoc.id || mData.id,
+            courseId: mCourseId,
+            lessons: [],
+          });
           if (Array.isArray(mData.lessons)) {
             mData.lessons.forEach((l: Lesson) => {
-              if (l && l.id && !deletedLessonIds.has(l.id)) {
+              const lId = l && (l.id || (l as any).uid);
+              if (lId && !deletedLessonIds.has(lId)) {
                 allFirestoreLessons.push({
                   ...l,
+                  id: lId,
                   courseId: mCourseId,
+                  moduleId: mDoc.id || mData.id,
                   videoUrl: l.videoUrl || l.youtubeUrl || "",
                   youtubeUrl: l.youtubeUrl || l.videoUrl || "",
                   formUrl: l.formUrl || "",
@@ -710,14 +677,16 @@ export async function getAllCourses(
         const relevantLessons = allFirestoreLessons.filter(
           (les) => normalizeCourseId(les.courseId) === cCourseId
         );
+        const relevantModules = allFirestoreModules.filter(
+          (m) => normalizeCourseId(m.courseId) === cCourseId
+        );
 
         const built = assembleCourse(
           cCourseId,
           c,
           firestoreCourseData,
           relevantLessons,
-          deletedLessonIds,
-          localOverrides
+          relevantModules
         );
 
         courseCache.set(cCourseId, {
@@ -729,12 +698,13 @@ export async function getAllCourses(
 
       return assembledCourses;
     } catch (error) {
-      console.warn("Aviso ao carregar todos os cursos em lote:", error);
-      // Fallback para os dados estáticos locais
-      return AVAILABLE_COURSES.map((c) => {
-        const cached = courseCache.get(c.id);
-        return cached ? cached.data : c;
-      });
+      console.error("Erro ao carregar todos os cursos do Firestore:", error);
+      return AVAILABLE_COURSES.map((c) => ({
+        ...c,
+        lessons: [],
+        totalLessons: 0,
+        modules: [],
+      }));
     }
   })().finally(() => {
     inFlightAllCourses = null;
@@ -903,16 +873,8 @@ export async function deleteLesson(
   clearCourseCache();
 
   // 1. Identifica courseId e moduleId da aula a ser excluída
-  let targetCourseId = courseId || "";
-  let targetModuleId = moduleId || "";
-
-  if (!targetCourseId || !targetModuleId) {
-    const basicLesson = BASIC_ROCKWELL_LESSONS.find((l) => l.id === lessonId);
-    if (basicLesson) {
-      targetCourseId = targetCourseId || basicLesson.courseId;
-      targetModuleId = targetModuleId || basicLesson.moduleId || "";
-    }
-  }
+  const targetCourseId = courseId ? normalizeCourseId(courseId) : "";
+  const targetModuleId = moduleId || "";
 
   // 2. Exclui a aula da coleção 'lessons' no Firestore
   try {
@@ -929,8 +891,8 @@ export async function deleteLesson(
       deletedRef,
       {
         id: lessonId,
-        courseId: targetCourseId ? normalizeCourseId(targetCourseId) : "",
-        moduleId: targetModuleId || "",
+        courseId: targetCourseId,
+        moduleId: targetModuleId,
         deletedAt: new Date().toISOString(),
       },
       { merge: true }
@@ -940,21 +902,9 @@ export async function deleteLesson(
     throw error;
   }
 
-  // 4. Remove qualquer override local relacionado à aula e atualiza cache local de exclusões
-  if (typeof window !== "undefined") {
-    try {
-      const current = getLocalLessonsOverrides();
-      delete current[lessonId];
-      localStorage.setItem(
-        STORAGE_LESSONS_OVERRIDE_KEY,
-        JSON.stringify(current)
-      );
-    } catch (error) {
-      console.warn("Erro ao remover aula do cache local de overrides:", error);
-    }
-
-    setLocalDeletedLesson(lessonId);
-  }
+  // 4. Limpa caches
+  setLocalDeletedLesson(lessonId);
+  clearCourseCache();
 }
 
 /**
