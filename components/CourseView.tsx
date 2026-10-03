@@ -35,6 +35,7 @@ interface CourseViewProps {
   onSelectLesson: (lesson: Lesson) => void;
   onToggleComplete: (lessonId: string) => void;
   hasAccess?: boolean;
+  isLoadingCourses?: boolean;
 }
 
 export function CourseView({
@@ -45,6 +46,7 @@ export function CourseView({
   onSelectLesson,
   onToggleComplete,
   hasAccess = true,
+  isLoadingCourses = false,
 }: CourseViewProps) {
   // Estado para controlar a exibição individual das aulas de cada curso (fechado inicialmente)
   const [expandedCourseIds, setExpandedCourseIds] = useState<Record<string, boolean>>({});
@@ -231,7 +233,14 @@ export function CourseView({
                     )}
                   </div>
 
-                  {lessons.length === 0 ? (
+                  {isLoadingCourses ? (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/80 dark:border-slate-800 p-8 text-center space-y-3 shadow-2xs">
+                      <div className="w-5 h-5 border-2 border-[#ea580c] border-t-transparent rounded-full animate-spin mx-auto" />
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        Carregando aulas...
+                      </p>
+                    </div>
+                  ) : lessons.length === 0 ? (
                     <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/80 dark:border-slate-800 p-8 text-center space-y-2 shadow-2xs">
                       <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
                       <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">

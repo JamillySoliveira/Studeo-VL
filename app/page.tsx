@@ -131,6 +131,8 @@ export default function StudentApp() {
 
   // ID do curso que o aluno está visualizando no momento
   const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_COURSE_ID);
+  // Indicador de carregamento dos cursos do Firestore
+  const [coursesLoading, setCoursesLoading] = useState(true);
   // Lista com todos os cursos cadastrados na plataforma (iniciam sem aulas fictícias)
   const [allCourses, setAllCourses] = useState<Course[]>(() =>
     AVAILABLE_COURSES.map((c) => ({
@@ -141,11 +143,16 @@ export default function StudentApp() {
     }))
   );
 
+  // Higieniza em memória os cursos caso o usuário seja demo, sem consultas redundantes ao Firestore
+  const sanitizedCourses = useMemo(() => {
+    return sanitizeCoursesForUser(allCourses, user);
+  }, [allCourses, user]);
+
   // Curso ativo derivado em memória (elimina renders em cascata e sincronizações redundantes)
   const course = useMemo<Course>(() => {
-    const found = allCourses.find((c) => c.id === selectedCourseId);
+    const found = sanitizedCourses.find((c) => c.id === selectedCourseId);
     if (found) return found;
-    const first = allCourses[0];
+    const first = sanitizedCourses[0];
     if (first) return first;
     return {
       ...INITIAL_COURSE,
@@ -153,7 +160,7 @@ export default function StudentApp() {
       totalLessons: 0,
       modules: [],
     };
-  }, [allCourses, selectedCourseId]);
+  }, [sanitizedCourses, selectedCourseId]);
 
   // Aula selecionada atualmente para assistir no reprodutor
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
@@ -209,32 +216,35 @@ export default function StudentApp() {
   // SINCRONIZAÇÃO DE DADOS COM O FIRESTORE (ALTA PERFORMANCE)
   // =====================================================================
 
-  const userUid = user?.uid;
-  const userRole = user?.role;
-  const userIsDemo = isDemoUser(user);
-
-  // 1. Carrega todos os cursos na inicialização ou quando permissões do usuário mudarem
+  // 1. Carrega todos os cursos na inicialização (compartilha a promessa em andamento e gerencia o loading)
   useEffect(() => {
     let isMounted = true;
-    getAllCourses(user).then((courses) => {
-      if (!isMounted) return;
-      const sanitized = sanitizeCoursesForUser(courses, user);
-      startTransition(() => {
-        setAllCourses(sanitized);
+
+    getAllCourses()
+      .then((courses) => {
+        if (!isMounted) return;
+        startTransition(() => {
+          setAllCourses(courses);
+          setCoursesLoading(false);
+        });
+      })
+      .catch((err) => {
+        console.error("Erro ao carregar cursos do Firestore:", err);
+        if (!isMounted) return;
+        setCoursesLoading(false);
       });
-    });
 
     return () => {
       isMounted = false;
     };
-  }, [user, userUid, userRole, userIsDemo]);
+  }, []);
 
-  // 2. Busca o progresso (aulas e formulários) com cache inteligente e deduplicação
+  // 2. Busca o progresso detalhado do curso ativo em segundo plano (não bloqueia exibição das aulas)
   useEffect(() => {
     if (!user?.uid) return;
     let isMounted = true;
 
-    // Busca detalhada para o curso ativo
+    // Busca detalhada para o curso ativo sem bloquear a interface
     getUserProgress(user.uid, selectedCourseId).then((progressData) => {
       if (!isMounted) return;
       startTransition(() => {
@@ -247,7 +257,16 @@ export default function StudentApp() {
       });
     });
 
-    // Mapa geral para o Dashboard (utiliza cache/promessas compartilhadas de forma não-bloqueante)
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.uid, selectedCourseId]);
+
+  // 3. Mapa geral de progresso para o Dashboard (executa uma única vez por login do usuário)
+  useEffect(() => {
+    if (!user?.uid) return;
+    let isMounted = true;
+
     getUserCoursesProgressMap(
       user.uid,
       AVAILABLE_COURSES.map((c) => c.id)
@@ -264,7 +283,7 @@ export default function StudentApp() {
     return () => {
       isMounted = false;
     };
-  }, [user?.uid, selectedCourseId]);
+  }, [user?.uid]);
 
   // 3. Observa o estado de autenticação do Firebase em tempo real (montagem única)
   useEffect(() => {
@@ -335,11 +354,17 @@ export default function StudentApp() {
 
   // Recarrega todos os cursos após alterações administrativas
   const reloadAllCourses = async () => {
-    const courses = await getAllCourses(user);
-    const sanitizedCourses = sanitizeCoursesForUser(courses, user);
-    startTransition(() => {
-      setAllCourses(sanitizedCourses);
-    });
+    setCoursesLoading(true);
+    try {
+      const courses = await getAllCourses();
+      startTransition(() => {
+        setAllCourses(courses);
+        setCoursesLoading(false);
+      });
+    } catch (e) {
+      console.error("Erro ao recarregar cursos do Firestore:", e);
+      setCoursesLoading(false);
+    }
   };
 
   // =====================================================================
@@ -401,20 +426,22 @@ export default function StudentApp() {
     }
   };
 
-  // Seleciona um curso ativo na plataforma
-  const handleSelectCourse = async (courseId: string) => {
+  // Seleciona um curso ativo na plataforma de forma síncrona e instantânea
+  const handleSelectCourse = useCallback((courseId: string) => {
     setSelectedCourseId(courseId);
 
-    if (user?.uid) {
-      const progressData = await getUserProgress(user.uid, courseId);
-      startTransition(() => {
-        setCompletedLessons(progressData.completedLessons || []);
-        setCompletedForms(progressData.completedForms || []);
-      });
-    }
+    // Se já houver progresso carregado no mapa em memória, reflete imediatamente
+    setCoursesProgressMap((prev) => {
+      if (prev[courseId]) {
+        setCompletedLessons(prev[courseId]);
+      } else {
+        setCompletedLessons([]);
+      }
+      return prev;
+    });
 
     showToast("Curso selecionado!");
-  };
+  }, []);
 
   // Alterna o status da aula entre concluída e pendente, salvando no Firestore
   const handleToggleLessonComplete = async (lessonId: string) => {
@@ -474,12 +501,12 @@ export default function StudentApp() {
     }
   };
 
-  // Seleciona um curso e redireciona direto para a lista de aulas
-  const handleSelectAndOpenCourse = async (courseId: string) => {
-    await handleSelectCourse(courseId);
+  // Seleciona um curso e redireciona direto para a lista de aulas de forma instantânea
+  const handleSelectAndOpenCourse = useCallback((courseId: string) => {
+    handleSelectCourse(courseId);
     setCurrentTab("course");
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  }, [handleSelectCourse]);
 
   // Permite ao administrador salvar um novo link de vídeo para a aula
   const handleUpdateLessonVideoUrl = async (lessonId: string, videoUrl: string) => {
@@ -523,9 +550,9 @@ export default function StudentApp() {
 
   const enrolledCoursesList = useMemo(() => {
     return isAdmin
-      ? allCourses
-      : allCourses.filter((c) => accessibleCourseIds.includes(c.id));
-  }, [isAdmin, allCourses, accessibleCourseIds]);
+      ? sanitizedCourses
+      : sanitizedCourses.filter((c) => accessibleCourseIds.includes(c.id));
+  }, [isAdmin, sanitizedCourses, accessibleCourseIds]);
 
   // Valida se o aluno possui acesso ao curso ativo
   const hasAccess = useMemo(
@@ -647,7 +674,7 @@ export default function StudentApp() {
             <DashboardView
               user={user}
               course={course}
-              allCourses={allCourses.length >= 3 ? allCourses : AVAILABLE_COURSES}
+              allCourses={sanitizedCourses.length >= 3 ? sanitizedCourses : AVAILABLE_COURSES}
               coursesProgressMap={coursesProgressMap}
               completedLessons={completedLessons}
               onSelectCourse={handleSelectCourse}
@@ -677,6 +704,7 @@ export default function StudentApp() {
               onSelectLesson={handleSelectLesson}
               onToggleComplete={handleToggleLessonComplete}
               hasAccess={hasAccess}
+              isLoadingCourses={coursesLoading}
             />
           )}
 

@@ -437,7 +437,18 @@ export async function getCourseData(
       : cached.data;
   }
 
-  // 2. Se já houver promessa em andamento para este curso, reutiliza
+  // 2. Se a consulta global de cursos já estiver em andamento, aguarda para evitar requisições duplicadas
+  if (inFlightAllCourses) {
+    await inFlightAllCourses;
+    const postAllCached = courseCache.get(effectiveCourseId);
+    if (postAllCached) {
+      return isDemoUser(user)
+        ? sanitizeCourseForUser(postAllCached.data, user)
+        : postAllCached.data;
+    }
+  }
+
+  // 3. Se já houver promessa em andamento para este curso, reutiliza
   if (inFlightCoursePromises.has(effectiveCourseId)) {
     const active = await inFlightCoursePromises.get(effectiveCourseId)!;
     return isDemoUser(user) ? sanitizeCourseForUser(active, user) : active;
@@ -539,10 +550,13 @@ export async function getCourseData(
         firestoreModules
       );
 
-      courseCache.set(effectiveCourseId, {
-        data: built,
-        timestamp: Date.now(),
-      });
+      // Apenas armazena no cache se a consulta do Firestore ocorreu com sucesso sem erros
+      if (lessonsSnapshot !== null && courseSnapshot !== null && modulesSnapshot !== null) {
+        courseCache.set(effectiveCourseId, {
+          data: built,
+          timestamp: Date.now(),
+        });
+      }
       return built;
     } catch (error) {
       console.error("Erro ao carregar dados do curso no Firestore:", error);
@@ -596,14 +610,13 @@ export async function getAllCourses(
     const deletedLessonIds = new Set<string>(localDeleted);
 
     try {
-      const [deletedSnapshot, lessonsSnapshot, modulesSnapshot, ...courseSnapshots] =
+      // Executa apenas 4 consultas paralelas de coleção (evitando múltiplas chamadas individuais de getDoc por curso)
+      const [deletedSnapshot, lessonsSnapshot, modulesSnapshot, coursesSnapshot] =
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
           getDocs(collection(db, "lessons")).catch(() => null),
           getDocs(collection(db, "modules")).catch(() => null),
-          ...AVAILABLE_COURSES.map((c) =>
-            getDoc(doc(db, "courses", c.id)).catch(() => null)
-          ),
+          getDocs(collection(db, "courses")).catch(() => null),
         ]);
 
       if (deletedSnapshot) {
@@ -664,12 +677,11 @@ export async function getAllCourses(
       }
 
       const coursesMapData = new Map<string, Partial<Course>>();
-      courseSnapshots.forEach((snap, idx) => {
-        if (snap && snap.exists()) {
-          const cId = AVAILABLE_COURSES[idx].id;
-          coursesMapData.set(cId, snap.data() as Partial<Course>);
-        }
-      });
+      if (coursesSnapshot) {
+        coursesSnapshot.docs.forEach((docSnap) => {
+          coursesMapData.set(docSnap.id, docSnap.data() as Partial<Course>);
+        });
+      }
 
       const assembledCourses: Course[] = AVAILABLE_COURSES.map((c) => {
         const cCourseId = c.id;
@@ -689,10 +701,13 @@ export async function getAllCourses(
           relevantModules
         );
 
-        courseCache.set(cCourseId, {
-          data: built,
-          timestamp: Date.now(),
-        });
+        // Apenas armazena no cache se a consulta do Firestore ocorreu com sucesso sem erros (nunca armazena erro)
+        if (lessonsSnapshot !== null && modulesSnapshot !== null && coursesSnapshot !== null) {
+          courseCache.set(cCourseId, {
+            data: built,
+            timestamp: Date.now(),
+          });
+        }
         return built;
       });
 
