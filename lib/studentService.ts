@@ -106,9 +106,9 @@ export async function syncUserProfile(user: {
     const existing = await getDoc(userRef);
 
     if (!existing.exists()) {
-      // 3. Novo aluno criado rigorosamente conforme os requisitos de segurança:
-      // role: "student", accessEnabled: false, courseAccess: { "rockwell-controle-analogico-supervisorio": false }
-      // NÃO adiciona automaticamente o curso em enrolledCourses e NÃO concede acesso.
+      // 3. Novo aluno criado:
+      // role: "student", accessEnabled: true (entra na plataforma), courseAccess: { "rockwell-controle-analogico-supervisorio": false } (sem acesso às aulas)
+      // NÃO adiciona o curso em enrolledCourses e NÃO concede acesso às aulas até liberação do administrador.
       const newProfile: {
         uid: string;
         email: string | null;
@@ -124,7 +124,7 @@ export async function syncUserProfile(user: {
         displayName: user.displayName || (user.email ? user.email.split("@")[0] : "Aluno"),
         photoURL: user.photoURL || null,
         role: "student",
-        accessEnabled: false,
+        accessEnabled: true,
         courseAccess: {
           "rockwell-controle-analogico-supervisorio": false,
         },

@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   BookOpen,
   MessageCircle,
+  AlertCircle,
 } from "lucide-react";
 import { Course, Lesson } from "@/lib/types";
 import { getCourseWhatsAppUrl } from "@/lib/constants";
@@ -36,6 +37,9 @@ interface CourseViewProps {
   onToggleComplete: (lessonId: string) => void;
   hasAccess?: boolean;
   isLoadingCourses?: boolean;
+  accessibleCourseIds?: string[];
+  coursesError?: string | null;
+  onRetryCourses?: () => void;
 }
 
 export function CourseView({
@@ -47,6 +51,9 @@ export function CourseView({
   onToggleComplete,
   hasAccess = true,
   isLoadingCourses = false,
+  accessibleCourseIds,
+  coursesError,
+  onRetryCourses,
 }: CourseViewProps) {
   // Estado para controlar a exibição individual das aulas de cada curso (fechado inicialmente)
   const [expandedCourseIds, setExpandedCourseIds] = useState<Record<string, boolean>>({});
@@ -55,8 +62,8 @@ export function CourseView({
   const toggleCourse = (courseId: string) => {
     setExpandedCourseIds((prev) => {
       const willOpen = !prev[courseId];
-      // Se estiver abrindo e o curso não for o atualmente selecionado no app, sincroniza o curso ativo
-      if (willOpen && onSelectCourse && courseId !== course.id) {
+      // Ao abrir o curso, sincroniza com o aplicativo para garantir dados atualizados
+      if (willOpen && onSelectCourse) {
         onSelectCourse(courseId);
       }
       return {
@@ -65,40 +72,6 @@ export function CourseView({
       };
     });
   };
-
-  // Se o aluno NÃO possuir acesso a este curso, exibe a tela de bloqueio com botão para WhatsApp
-  if (!hasAccess && (!enrolledCourses || enrolledCourses.length === 0)) {
-    return (
-      <div id="vl-course-locked-view" className="max-w-2xl mx-auto py-8 sm:py-12 px-4 text-center">
-        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-8 sm:p-10 shadow-xs space-y-6 transition-colors">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-100 dark:border-amber-900/50">
-            <Lock className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              {course.title}
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Você ainda não possui acesso liberado a este curso. Para adquirir seu acesso e iniciar as aulas, converse com o instrutor da VL Automação pelo WhatsApp oficial.
-            </p>
-          </div>
-
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a
-              href={getCourseWhatsAppUrl(course.id)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
-            >
-              <MessageCircle className="w-4 h-4 shrink-0" />
-              <span>OBTER ACESSO AO CURSO</span>
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Lista dos cursos a serem exibidos na aba Meus Cursos
   const coursesToDisplay: Course[] =
@@ -111,6 +84,13 @@ export function CourseView({
       {coursesToDisplay.map((c) => {
         const isCurrentActive = c.id === course.id;
         const isExpanded = !!expandedCourseIds[c.id];
+        // Determina se este curso específico possui acesso liberado para o aluno
+        const isCourseAccessible = accessibleCourseIds
+          ? accessibleCourseIds.includes(c.id)
+          : isCurrentActive
+          ? hasAccess
+          : false;
+
         const lessons = c.lessons || [];
         const totalCount = lessons.length;
         const currentCompleted = isCurrentActive ? completedLessons : [];
@@ -139,6 +119,12 @@ export function CourseView({
                         {c.badge}
                       </span>
                     )}
+                    {!isCourseAccessible && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 shrink-0">
+                        <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                        <span>Acesso não liberado</span>
+                      </span>
+                    )}
                   </div>
 
                   <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-3xl">
@@ -158,9 +144,16 @@ export function CourseView({
                       </span>
                     )}
                     <span>
-                      Total: <strong className="text-slate-700 dark:text-slate-200">{c.totalLessons || totalCount} aulas</strong>
+                      Total:{" "}
+                      <strong className="text-slate-700 dark:text-slate-200">
+                        {isLoadingCourses
+                          ? "Carregando..."
+                          : coursesError
+                          ? "Erro ao carregar"
+                          : `${c.totalLessons || totalCount} aulas`}
+                      </strong>
                     </span>
-                    {totalCount > 0 && isCurrentActive && (
+                    {totalCount > 0 && isCurrentActive && isCourseAccessible && !isLoadingCourses && !coursesError && (
                       <span className="text-[#ea580c] font-bold">
                         {completedCount} de {totalCount} concluídas ({progressPercent}%)
                       </span>
@@ -188,30 +181,47 @@ export function CourseView({
             {/* ================= ÁREA EXPANSÍVEL: PROGRESSO E AULAS DO CURSO ================= */}
             {isExpanded && (
               <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 p-6 sm:p-7 space-y-6">
-                {/* Progresso detalhado do curso */}
-                <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between text-xs sm:text-sm">
-                    <span className="text-slate-700 dark:text-slate-300 font-semibold">
-                      Progresso do curso
-                    </span>
-                    <span className="font-extrabold text-[#ea580c]">
-                      {completedCount} de {totalCount} aulas ({progressPercent}%)
-                    </span>
+                {!isCourseAccessible ? (
+                  /* Mensagem clara quando o aluno novo ainda não teve o curso liberado */
+                  <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/80 dark:border-slate-800 p-8 text-center space-y-3 shadow-2xs">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-100 dark:border-amber-900/50">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                      Seu acesso às aulas ainda não foi liberado.
+                    </h4>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+                      Assim que o acesso for liberado pelo administrador, as aulas estarão disponíveis aqui.
+                    </p>
                   </div>
+                ) : (
+                  <>
+                    {/* Progresso detalhado do curso */}
+                    <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 space-y-2 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                          Progresso do curso
+                        </span>
+                        <span className="font-extrabold text-[#ea580c]">
+                          {isLoadingCourses
+                            ? "Carregando aulas..."
+                            : `${completedCount} de ${totalCount} aulas (${progressPercent}%)`}
+                        </span>
+                      </div>
 
-                  <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#ea580c] rounded-full transition-all duration-500"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                </div>
+                      <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#ea580c] rounded-full transition-all duration-500"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
 
                 {/* Grade de Aulas */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between px-1">
                     <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 tracking-tight">
-                      Grade de Aulas ({totalCount})
+                      Grade de Aulas {isLoadingCourses ? "(Carregando...)" : `(${totalCount})`}
                     </h3>
 
                     {nextLesson && hasAccess && (
@@ -239,6 +249,25 @@ export function CourseView({
                       <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                         Carregando aulas...
                       </p>
+                    </div>
+                  ) : coursesError ? (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl border border-rose-200 dark:border-rose-900/40 p-8 text-center space-y-3 shadow-2xs">
+                      <AlertCircle className="w-8 h-8 text-rose-500 mx-auto" />
+                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        Erro ao carregar as aulas
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                        Ocorreu uma instabilidade na consulta ao Firestore. Clique no botão abaixo para tentar novamente.
+                      </p>
+                      {onRetryCourses && (
+                        <button
+                          type="button"
+                          onClick={onRetryCourses}
+                          className="py-2 px-4 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-bold rounded-lg cursor-pointer transition-colors"
+                        >
+                          Tentar novamente
+                        </button>
+                      )}
                     </div>
                   ) : lessons.length === 0 ? (
                     <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/80 dark:border-slate-800 p-8 text-center space-y-2 shadow-2xs">
@@ -386,11 +415,13 @@ export function CourseView({
                     </div>
                   )}
                 </div>
-              </div>
+              </>
             )}
           </div>
-        );
-      })}
-    </div>
+        )}
+      </div>
+    );
+  })}
+</div>
   );
 }

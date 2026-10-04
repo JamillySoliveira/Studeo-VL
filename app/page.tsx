@@ -45,6 +45,7 @@ import {
   toggleFormProgress,
   getUserProfile,
 } from "@/lib/studentService";
+import { Lock } from "lucide-react";
 import {
   getCourseData,
   getAllCourses,
@@ -133,6 +134,8 @@ export default function StudentApp() {
   const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_COURSE_ID);
   // Indicador de carregamento dos cursos do Firestore
   const [coursesLoading, setCoursesLoading] = useState(true);
+  // Mensagem de erro caso a consulta de cursos ao Firestore falhe
+  const [coursesError, setCoursesError] = useState<string | null>(null);
   // Lista com todos os cursos cadastrados na plataforma (iniciam sem aulas fictícias)
   const [allCourses, setAllCourses] = useState<Course[]>(() =>
     AVAILABLE_COURSES.map((c) => ({
@@ -216,28 +219,37 @@ export default function StudentApp() {
   // SINCRONIZAÇÃO DE DADOS COM O FIRESTORE (ALTA PERFORMANCE)
   // =====================================================================
 
-  // 1. Carrega todos os cursos na inicialização (compartilha a promessa em andamento e gerencia o loading)
+  // 1. Carrega todos os cursos do Firestore SOMENTE DEPOIS que o Firebase Auth confirmar o usuário
   useEffect(() => {
+    // Elimina a condição de corrida: NÃO executa getAllCourses() prematuramente se o usuário ainda não foi autenticado
+    if (authLoading || !user?.uid) {
+      return;
+    }
+
     let isMounted = true;
 
-    getAllCourses()
+    getAllCourses(user)
       .then((courses) => {
         if (!isMounted) return;
         startTransition(() => {
           setAllCourses(courses);
           setCoursesLoading(false);
+          setCoursesError(null);
         });
       })
       .catch((err) => {
         console.error("Erro ao carregar cursos do Firestore:", err);
         if (!isMounted) return;
-        setCoursesLoading(false);
+        startTransition(() => {
+          setCoursesLoading(false);
+          setCoursesError(err?.message || "Erro ao carregar cursos do Firestore.");
+        });
       });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [authLoading, user?.uid, user]);
 
   // 2. Busca o progresso detalhado do curso ativo em segundo plano (não bloqueia exibição das aulas)
   useEffect(() => {
@@ -343,6 +355,8 @@ export default function StudentApp() {
         } else {
           startTransition(() => {
             setUser(null);
+            setCoursesLoading(false);
+            setCoursesError(null);
           });
         }
         setAuthLoading(false);
@@ -355,15 +369,18 @@ export default function StudentApp() {
   // Recarrega todos os cursos após alterações administrativas
   const reloadAllCourses = async () => {
     setCoursesLoading(true);
+    setCoursesError(null);
     try {
-      const courses = await getAllCourses();
+      const courses = await getAllCourses(user);
       startTransition(() => {
         setAllCourses(courses);
         setCoursesLoading(false);
+        setCoursesError(null);
       });
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao recarregar cursos do Firestore:", e);
       setCoursesLoading(false);
+      setCoursesError(e?.message || "Erro ao recarregar cursos.");
     }
   };
 
@@ -518,6 +535,12 @@ export default function StudentApp() {
 
   // Abre uma aula específica no reprodutor de vídeo
   const handleSelectLesson = (lesson: Lesson) => {
+    // Alunos sem acesso liberado às aulas são impedidos de abrir qualquer aula
+    if (!hasAccess && !isAdmin) {
+      showToast("Seu acesso às aulas ainda não foi liberado.");
+      return;
+    }
+
     if (isDemoUser(user)) {
       // Garante que o Aluno Demonstração nunca receba links de vídeo
       setSelectedLesson({
@@ -537,10 +560,7 @@ export default function StudentApp() {
   // =====================================================================
 
   // Validação estrita de administrador (Aluno Demonstração nunca é admin)
-  const isAdmin = useMemo(
-    () => user?.role === "admin" && !isDemoUser(user),
-    [user]
-  );
+  const isAdmin = user?.role === "admin" && !isDemoUser(user);
 
   // Lista dos cursos liberados para o aluno visualizar no menu e no dashboard
   const accessibleCourseIds = useMemo(
@@ -549,25 +569,23 @@ export default function StudentApp() {
   );
 
   const enrolledCoursesList = useMemo(() => {
-    return isAdmin
-      ? sanitizedCourses
-      : sanitizedCourses.filter((c) => accessibleCourseIds.includes(c.id));
-  }, [isAdmin, sanitizedCourses, accessibleCourseIds]);
+    const isUserAdmin = user?.role === "admin" && !isDemoUser(user);
+    if (isUserAdmin) return sanitizedCourses;
+    const filtered = sanitizedCourses.filter((c) => accessibleCourseIds.includes(c.id));
+    if (filtered.length > 0) return filtered;
+    // Para novos alunos que ainda não possuem cursos liberados em courseAccess,
+    // exibe o curso na área "Meus Cursos" para visualização do card com status de acesso pendente
+    return [course];
+  }, [user, sanitizedCourses, accessibleCourseIds, course]);
 
   // Valida se o aluno possui acesso ao curso ativo
-  const hasAccess = useMemo(
-    () => checkUserCourseAccess(user, course.id),
-    [user, course.id]
-  );
+  const hasAccess = checkUserCourseAccess(user, course.id);
 
   // Métricas do curso atual
   const lessons = course.lessons || [];
   const totalLessons = lessons.length;
   const completedCount = completedLessons.length;
-  const progressPercent = useMemo(
-    () => (totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0),
-    [totalLessons, completedCount]
-  );
+  const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
 
   // =====================================================================
   // RENDERIZAÇÃO: TELAS ESPECIAIS (LOADING, LOGIN E BLOQUEIO)
@@ -691,6 +709,7 @@ export default function StudentApp() {
                 setCurrentTab("help");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
+              isLoadingCourses={coursesLoading}
             />
           )}
 
@@ -705,6 +724,9 @@ export default function StudentApp() {
               onToggleComplete={handleToggleLessonComplete}
               hasAccess={hasAccess}
               isLoadingCourses={coursesLoading}
+              accessibleCourseIds={accessibleCourseIds}
+              coursesError={coursesError}
+              onRetryCourses={reloadAllCourses}
             />
           )}
 
@@ -718,19 +740,42 @@ export default function StudentApp() {
 
           {/* 4. Reprodutor de Aulas e Atividades */}
           {currentTab === "lesson" && (
-            <LessonPlayer
-              course={course}
-              currentLesson={currentLesson}
-              completedLessons={completedLessons}
-              completedForms={completedForms}
-              onToggleComplete={handleToggleLessonComplete}
-              onToggleFormComplete={handleToggleFormComplete}
-              onSelectLesson={handleSelectLesson}
-              onGoToCourse={() => setCurrentTab("course")}
-              user={user}
-              hasAccess={hasAccess}
-              onUpdateLessonVideoUrl={handleUpdateLessonVideoUrl}
-            />
+            hasAccess || isAdmin ? (
+              <LessonPlayer
+                course={course}
+                currentLesson={currentLesson}
+                completedLessons={completedLessons}
+                completedForms={completedForms}
+                onToggleComplete={handleToggleLessonComplete}
+                onToggleFormComplete={handleToggleFormComplete}
+                onSelectLesson={handleSelectLesson}
+                onGoToCourse={() => setCurrentTab("course")}
+                user={user}
+                hasAccess={hasAccess}
+                onUpdateLessonVideoUrl={handleUpdateLessonVideoUrl}
+              />
+            ) : (
+              <div className="max-w-2xl mx-auto py-12 px-4 text-center">
+                <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-8 sm:p-12 shadow-xs space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-100 dark:border-amber-900/50">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                    Seu acesso às aulas ainda não foi liberado.
+                  </h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    Assim que o acesso for liberado pelo administrador, as aulas estarão disponíveis aqui.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentTab("course")}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    <span>Voltar para Meus Cursos</span>
+                  </button>
+                </div>
+              </div>
+            )
           )}
 
           {/* 5. Acompanhamento de Progresso */}

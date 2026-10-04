@@ -40,6 +40,7 @@ interface DashboardViewProps {
   onGoToHelp?: () => void;
   onGoToCertificates?: () => void;
   onGoToNotices?: () => void;
+  isLoadingCourses?: boolean;
 }
 
 /**
@@ -59,6 +60,7 @@ export function DashboardView({
   onSelectCourse,
   onStartLesson,
   onGoToCourse,
+  isLoadingCourses = false,
 }: DashboardViewProps) {
   // Nome amigável do aluno para saudação dinâmica
   const displayName =
@@ -342,7 +344,9 @@ export function DashboardView({
                     <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
                       <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                         <span>
-                          {totalCourseLessons > 0
+                          {isLoadingCourses
+                            ? "Carregando aulas..."
+                            : totalCourseLessons > 0
                             ? `${completedCount} de ${totalCourseLessons} concluídas`
                             : "Aulas em preparação"}
                         </span>

@@ -17,6 +17,7 @@
  */
 
 import {
+  auth,
   db,
   doc,
   getDoc,
@@ -263,11 +264,15 @@ export function sanitizeCourseForUser(
   course: Course,
   user: UserProfile | null | undefined
 ): Course {
-  if (!isDemoUser(user)) {
+  const hasCourseAccess = checkUserCourseAccess(user || null, course.id);
+  const isDemo = isDemoUser(user);
+
+  // Se o usuário não for demo e possuir acesso oficial ao curso, retorna dados completos
+  if (!isDemo && hasCourseAccess) {
     return course;
   }
 
-  // Remove URLs dos vídeos das aulas para o Aluno Demonstração
+  // Remove URLs dos vídeos das aulas para alunos sem acesso liberado ou usuários de demonstração
   const sanitizedLessons = (course.lessons || []).map((lesson) => ({
     ...lesson,
     videoUrl: "",
@@ -291,15 +296,12 @@ export function sanitizeCourseForUser(
 }
 
 /**
- * Higieniza uma lista de cursos para o Aluno Demonstração.
+ * Higieniza uma lista de cursos para proteção de dados não liberados.
  */
 export function sanitizeCoursesForUser(
   courses: Course[],
   user: UserProfile | null | undefined
 ): Course[] {
-  if (!isDemoUser(user)) {
-    return courses;
-  }
   return courses.map((course) => sanitizeCourseForUser(course, user));
 }
 
@@ -429,9 +431,13 @@ export async function getCourseData(
 ): Promise<Course> {
   const effectiveCourseId = normalizeCourseId(courseId);
 
-  // 1. Verifica cache em memória (TTL curto para consistência rápida)
+  // 1. Verifica cache em memória (TTL curto para consistência rápida e exige aulas carregadas)
   const cached = courseCache.get(effectiveCourseId);
-  if (cached && Date.now() - cached.timestamp < COURSE_CACHE_TTL) {
+  if (
+    cached &&
+    Date.now() - cached.timestamp < COURSE_CACHE_TTL &&
+    (cached.data.lessons?.length || 0) > 0
+  ) {
     return isDemoUser(user)
       ? sanitizeCourseForUser(cached.data, user)
       : cached.data;
@@ -465,12 +471,17 @@ export async function getCourseData(
     const deletedLessonIds = new Set<string>(localDeleted);
 
     try {
+      // Se não houver autenticação ativa do Firebase, não executa consulta prematura
+      if (!auth.currentUser) {
+        throw new Error("AUTH_REQUIRED: Usuário não autenticado no Firebase.");
+      }
+
       // Executa buscas em paralelo
       const [deletedSnapshot, courseSnapshot, lessonsSnapshot, modulesSnapshot] =
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
           getDoc(doc(db, "courses", effectiveCourseId)).catch(() => null),
-          getDocs(collection(db, "lessons")).catch(() => null),
+          getDocs(collection(db, "lessons")),
           getDocs(collection(db, "modules")).catch(() => null),
         ]);
 
@@ -550,8 +561,14 @@ export async function getCourseData(
         firestoreModules
       );
 
-      // Apenas armazena no cache se a consulta do Firestore ocorreu com sucesso sem erros
-      if (lessonsSnapshot !== null && courseSnapshot !== null && modulesSnapshot !== null) {
+      // Apenas armazena no cache se a consulta do Firestore ocorreu com sucesso e retornou aulas reais
+      if (
+        lessonsSnapshot !== null &&
+        courseSnapshot !== null &&
+        modulesSnapshot !== null &&
+        firestoreLessons.length > 0 &&
+        built.lessons.length > 0
+      ) {
         courseCache.set(effectiveCourseId, {
           data: built,
           timestamp: Date.now(),
@@ -560,15 +577,7 @@ export async function getCourseData(
       return built;
     } catch (error) {
       console.error("Erro ao carregar dados do curso no Firestore:", error);
-      // NUNCA inserir aulas fictícias no fallback
-      const emptyFallback: Course = {
-        ...baseCourse,
-        id: effectiveCourseId,
-        lessons: [],
-        totalLessons: 0,
-        modules: [],
-      };
-      return emptyFallback;
+      throw error;
     }
   })().finally(() => {
     inFlightCoursePromises.delete(effectiveCourseId);
@@ -586,11 +595,15 @@ export async function getCourseData(
 export async function getAllCourses(
   user?: UserProfile | null
 ): Promise<Course[]> {
-  // 1. Verifica se todos os cursos disponíveis já estão no cache em memória
+  // 1. Verifica se todos os cursos disponíveis já estão no cache em memória com aulas reais
   const now = Date.now();
   const allCached = AVAILABLE_COURSES.every((c) => {
     const cached = courseCache.get(c.id);
-    return cached && now - cached.timestamp < COURSE_CACHE_TTL;
+    return (
+      cached &&
+      now - cached.timestamp < COURSE_CACHE_TTL &&
+      (cached.data.lessons?.length || 0) > 0
+    );
   });
 
   if (allCached) {
@@ -610,11 +623,16 @@ export async function getAllCourses(
     const deletedLessonIds = new Set<string>(localDeleted);
 
     try {
+      // Se não houver autenticação ativa do Firebase, não executa consulta prematura
+      if (!auth.currentUser) {
+        throw new Error("AUTH_REQUIRED: Usuário não autenticado no Firebase.");
+      }
+
       // Executa apenas 4 consultas paralelas de coleção (evitando múltiplas chamadas individuais de getDoc por curso)
       const [deletedSnapshot, lessonsSnapshot, modulesSnapshot, coursesSnapshot] =
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
-          getDocs(collection(db, "lessons")).catch(() => null),
+          getDocs(collection(db, "lessons")),
           getDocs(collection(db, "modules")).catch(() => null),
           getDocs(collection(db, "courses")).catch(() => null),
         ]);
@@ -701,8 +719,15 @@ export async function getAllCourses(
           relevantModules
         );
 
-        // Apenas armazena no cache se a consulta do Firestore ocorreu com sucesso sem erros (nunca armazena erro)
-        if (lessonsSnapshot !== null && modulesSnapshot !== null && coursesSnapshot !== null) {
+        // Apenas armazena no cache se a consulta do Firestore ocorreu com sucesso e retornou aulas reais
+        // NUNCA armazena no cache cursos vazios se a consulta não retornou aulas
+        if (
+          lessonsSnapshot !== null &&
+          modulesSnapshot !== null &&
+          coursesSnapshot !== null &&
+          allFirestoreLessons.length > 0 &&
+          built.lessons.length > 0
+        ) {
           courseCache.set(cCourseId, {
             data: built,
             timestamp: Date.now(),
@@ -714,12 +739,7 @@ export async function getAllCourses(
       return assembledCourses;
     } catch (error) {
       console.error("Erro ao carregar todos os cursos do Firestore:", error);
-      return AVAILABLE_COURSES.map((c) => ({
-        ...c,
-        lessons: [],
-        totalLessons: 0,
-        modules: [],
-      }));
+      throw error;
     }
   })().finally(() => {
     inFlightAllCourses = null;
