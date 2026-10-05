@@ -25,11 +25,9 @@ service cloud.firestore {
       return hasUserProfile() && (
         isAdmin() ||
         (
-          getUserProfile().courseAccess != null && (
-            (courseId in getUserProfile().courseAccess && getUserProfile().courseAccess[courseId] == true) ||
-            (courseId == 'rockwell-basico' && ('rockwell-controle-analogico-supervisorio' in getUserProfile().courseAccess) && getUserProfile().courseAccess['rockwell-controle-analogico-supervisorio'] == true) ||
-            (courseId == 'rockwell-controle-analogico-supervisorio' && ('rockwell-basico' in getUserProfile().courseAccess) && getUserProfile().courseAccess['rockwell-basico'] == true)
-          )
+          getUserProfile().courseAccess != null &&
+          courseId in getUserProfile().courseAccess &&
+          getUserProfile().courseAccess[courseId] == true
         )
       );
     }

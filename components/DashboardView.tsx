@@ -302,7 +302,7 @@ export function DashboardView({
         {/* Grade dos 3 Cursos Oficiais */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {allCourses.map((c) => {
-            // Verifica o acesso estrito com base em enrolledCourses ou role de admin
+            // Verifica o acesso estrito com base exclusivamente em courseAccess ou role de admin
             const isEnrolled = checkUserCourseAccess(user, c.id);
 
             // Progresso isolado para este curso específico (nunca misturado)

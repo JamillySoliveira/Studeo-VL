@@ -408,7 +408,10 @@ export default function StudentApp() {
       displayName: "Aluno Demonstração",
       role: "student",
       accessEnabled: true,
-      enrolledCourses: ["rockwell-basico"],
+      courseAccess: {
+        "rockwell-controle-analogico-supervisorio": false,
+      },
+      enrolledCourses: [],
     };
 
     // Higieniza imediatamente cursos e aulas em memória, removendo URLs de vídeo
