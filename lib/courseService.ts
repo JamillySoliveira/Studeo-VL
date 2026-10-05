@@ -1062,7 +1062,11 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
 
     const users: UserProfile[] = [];
     snapshot.forEach((item) => {
-      users.push(item.data() as UserProfile);
+      const data = item.data() as UserProfile;
+      users.push({
+        ...data,
+        uid: data.uid || item.id,
+      });
     });
 
     return users;

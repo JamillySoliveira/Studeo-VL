@@ -18,6 +18,7 @@ export interface UserProfile {
   photoURL?: string | null;
   role?: "student" | "admin";
   createdAt?: string;
+  lastLoginAt?: string;
   accessEnabled?: boolean;
   courseAccess?: Record<string, boolean>;
   enrolledCourses?: string[];

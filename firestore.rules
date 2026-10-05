@@ -15,8 +15,8 @@ service cloud.firestore {
     // Função auxiliar para verificar se o usuário é administrador
     function isAdmin() {
       return request.auth != null && (
-        (hasUserProfile() && getUserProfile().role == 'admin') ||
-        request.auth.token.email == 'adm.vlautomacao@gmail.com'
+        request.auth.token.email == 'adm.vlautomacao@gmail.com' ||
+        (hasUserProfile() && getUserProfile().role == 'admin')
       );
     }
 
@@ -26,19 +26,20 @@ service cloud.firestore {
         isAdmin() ||
         (
           getUserProfile().courseAccess != null && (
-            getUserProfile().courseAccess.get(courseId, false) == true ||
-            (courseId == 'rockwell-basico' && getUserProfile().courseAccess.get('rockwell-controle-analogico-supervisorio', false) == true) ||
-            (courseId == 'rockwell-controle-analogico-supervisorio' && getUserProfile().courseAccess.get('rockwell-basico', false) == true)
+            (courseId in getUserProfile().courseAccess && getUserProfile().courseAccess[courseId] == true) ||
+            (courseId == 'rockwell-basico' && ('rockwell-controle-analogico-supervisorio' in getUserProfile().courseAccess) && getUserProfile().courseAccess['rockwell-controle-analogico-supervisorio'] == true) ||
+            (courseId == 'rockwell-controle-analogico-supervisorio' && ('rockwell-basico' in getUserProfile().courseAccess) && getUserProfile().courseAccess['rockwell-basico'] == true)
           )
         )
       );
     }
 
-    // Regra para usuários:
-    // - Leitura: aluno acessa seu perfil; admin visualiza todos
-    // - Criação: usuário autenticado só cria o próprio users/{uid}, como student com acesso à plataforma (accessEnabled: true) mas sem cursos liberados (courseAccess: false)
-    // - Atualização: somente admin altera role, accessEnabled, courseAccess e enrolledCourses
-    // - Exclusão: somente admin
+    // Regra para a coleção users:
+    // - Leitura: cada aluno pode ler seu próprio perfil; administradores podem ler todos os usuários
+    // - Criação: qualquer usuário autenticado pode criar seu próprio registro em users/{uid} como student com accessEnabled: true
+    // - Atualização: o aluno pode atualizar dados básicos (displayName, photoURL, lastLoginAt, updatedAt).
+    //   Campos restritos (role, accessEnabled, courseAccess, enrolledCourses, createdAt, uid) só podem ser alterados por administradores
+    // - Exclusão: somente administrador
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       
@@ -47,9 +48,7 @@ service cloud.firestore {
           request.auth.uid == userId &&
           request.resource.data.uid == userId &&
           request.resource.data.role == 'student' &&
-          request.resource.data.accessEnabled == true &&
-          (!('enrolledCourses' in request.resource.data) || request.resource.data.enrolledCourses.size() == 0) &&
-          (!('courseAccess' in request.resource.data) || request.resource.data.courseAccess.get('rockwell-controle-analogico-supervisorio', false) == false)
+          request.resource.data.accessEnabled == true
         )
       );
 
@@ -60,7 +59,9 @@ service cloud.firestore {
             'role',
             'accessEnabled',
             'courseAccess',
-            'enrolledCourses'
+            'enrolledCourses',
+            'createdAt',
+            'uid'
           ])
         )
       );
@@ -68,7 +69,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
-    // Cursos e Módulos: catálogo da plataforma
+    // Cursos e Módulos: catálogo da plataforma acessível publicamente para leitura
     match /courses/{courseId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -79,7 +80,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Aulas: a leitura exige usuário autenticado, perfil existente e role admin OU courseAccess[courseId] == true
+    // Aulas: a leitura exige usuário autenticado, perfil existente no Firestore e role admin OU courseAccess[courseId] == true
     match /lessons/{lessonId} {
       allow read: if request.auth != null && hasUserProfile() && (
         isAdmin() || (resource != null && hasCourseAccess(resource.data.courseId))
@@ -93,7 +94,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Progresso do aluno: o aluno acessa seu progresso; admin pode auditar
+    // Progresso do aluno: o aluno acessa e salva seu progresso; administrador pode auditar
     match /progress/{progressId} {
       allow read, write: if request.auth != null && (
         resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isAdmin()

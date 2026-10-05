@@ -326,6 +326,8 @@ export default function StudentApp() {
             console.error("Erro ao carregar perfil do usuário:", profileErr);
           }
 
+          const isAdminEmail = firebaseUser.email?.toLowerCase() === "adm.vlautomacao@gmail.com";
+
           const studentProfile: UserProfile = dbProfile || {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -333,7 +335,7 @@ export default function StudentApp() {
               firebaseUser.displayName ||
               (firebaseUser.email ? firebaseUser.email.split("@")[0] : "Aluno"),
             photoURL: firebaseUser.photoURL,
-            role: "student",
+            role: isAdminEmail ? "admin" : "student",
             accessEnabled: true,
             courseAccess: {
               "rockwell-controle-analogico-supervisorio": false,
@@ -341,6 +343,10 @@ export default function StudentApp() {
             enrolledCourses: [],
             createdAt: new Date().toISOString(),
           };
+
+          if (isAdminEmail) {
+            studentProfile.role = "admin";
+          }
 
           // Aluno Demonstração nunca possui papel de administrador
           if (isDemoUser(studentProfile)) {
@@ -566,7 +572,9 @@ export default function StudentApp() {
   // =====================================================================
 
   // Validação estrita de administrador (Aluno Demonstração nunca é admin)
-  const isAdmin = user?.role === "admin" && !isDemoUser(user);
+  const isAdmin =
+    (user?.role === "admin" || user?.email?.toLowerCase() === "adm.vlautomacao@gmail.com") &&
+    !isDemoUser(user);
 
   // Lista dos cursos liberados para o aluno visualizar no menu e no dashboard
   const accessibleCourseIds = useMemo(
@@ -575,7 +583,9 @@ export default function StudentApp() {
   );
 
   const enrolledCoursesList = useMemo(() => {
-    const isUserAdmin = user?.role === "admin" && !isDemoUser(user);
+    const isUserAdmin =
+      (user?.role === "admin" || user?.email?.toLowerCase() === "adm.vlautomacao@gmail.com") &&
+      !isDemoUser(user);
     if (isUserAdmin) return sanitizedCourses;
     const filtered = sanitizedCourses.filter((c) => accessibleCourseIds.includes(c.id));
     if (filtered.length > 0) return filtered;

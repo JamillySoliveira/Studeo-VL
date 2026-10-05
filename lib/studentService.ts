@@ -114,14 +114,19 @@ export async function syncUserProfile(user: {
       const existing = await getDoc(userRef);
 
       if (!existing.exists()) {
-        // Novo aluno criado:
-        // role: "student", accessEnabled: true (entra na plataforma), courseAccess = false (sem acesso às aulas)
+        const isAdminEmail = user.email?.toLowerCase() === "adm.vlautomacao@gmail.com";
+        // Novo aluno criado no Firestore:
+        // role: "student" (ou "admin" se for o email oficial de administração)
+        // accessEnabled: true (pode entrar na plataforma)
+        // courseAccess: { "rockwell-controle-analogico-supervisorio": false } (sem acesso às aulas até liberação)
+        // enrolledCourses: []
+        // createdAt: data ISO
         const newProfile: UserProfile = {
           uid: user.uid,
-          email: user.email,
+          email: user.email || null,
           displayName: user.displayName || (user.email ? user.email.split("@")[0] : "Aluno"),
           photoURL: user.photoURL || null,
-          role: "student",
+          role: isAdminEmail ? "admin" : "student",
           accessEnabled: true,
           courseAccess: {
             "rockwell-controle-analogico-supervisorio": false,
@@ -132,10 +137,12 @@ export async function syncUserProfile(user: {
 
         await setDoc(userRef, newProfile);
       } else {
-        // Usuário existente: NÃO sobrescreve role, accessEnabled, courseAccess ou enrolledCourses.
-        // Apenas sincroniza dados básicos do Google (displayName, email, photoURL) quando necessário.
+        // Usuário existente: NÃO sobrescreve role, accessEnabled, courseAccess, enrolledCourses ou createdAt.
+        // Apenas atualiza lastLoginAt e sincroniza dados básicos do Google (displayName, email, photoURL) se necessário.
         const existingData = existing.data() as UserProfile;
-        const updates: Record<string, any> = {};
+        const updates: Record<string, any> = {
+          lastLoginAt: new Date().toISOString(),
+        };
 
         const nextDisplayName = user.displayName || (user.email ? user.email.split("@")[0] : null);
         if (nextDisplayName && nextDisplayName !== existingData.displayName) {
@@ -148,10 +155,8 @@ export async function syncUserProfile(user: {
           updates.photoURL = user.photoURL || null;
         }
 
-        if (Object.keys(updates).length > 0) {
-          updates.updatedAt = new Date().toISOString();
-          await updateDoc(userRef, updates);
-        }
+        updates.updatedAt = new Date().toISOString();
+        await updateDoc(userRef, updates);
       }
 
       // Limpa qualquer profileCache existente após a criação/atualização
