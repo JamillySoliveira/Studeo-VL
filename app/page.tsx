@@ -304,7 +304,7 @@ export default function StudentApp() {
       async (firebaseUser: User | null) => {
         if (firebaseUser) {
           try {
-            // Sincroniza imediatamente o usuário com o Firestore
+            // Sincroniza obrigatoriamente o usuário com o Firestore antes de prosseguir
             await syncUserProfile({
               uid: firebaseUser.uid,
               email: firebaseUser.email,
@@ -312,14 +312,19 @@ export default function StudentApp() {
               photoURL: firebaseUser.photoURL,
             });
           } catch (syncErr) {
-            console.error("Erro ao sincronizar usuário no Firestore (onAuthStateChanged):", syncErr);
+            console.error("Erro ao sincronizar perfil do usuário:", syncErr);
           }
 
-          // 11. Limpa o cache antes de carregar o perfil oficial
+          // Limpa o cache antes de carregar o perfil oficial do Firestore
           clearUserProfileCache(firebaseUser.uid);
 
           // Lê permissões e dados oficiais salvos no documento do usuário no Firestore
-          const dbProfile = await getUserProfile(firebaseUser.uid);
+          let dbProfile: UserProfile | null = null;
+          try {
+            dbProfile = await getUserProfile(firebaseUser.uid);
+          } catch (profileErr) {
+            console.error("Erro ao carregar perfil do usuário:", profileErr);
+          }
 
           const studentProfile: UserProfile = dbProfile || {
             uid: firebaseUser.uid,
@@ -329,10 +334,11 @@ export default function StudentApp() {
               (firebaseUser.email ? firebaseUser.email.split("@")[0] : "Aluno"),
             photoURL: firebaseUser.photoURL,
             role: "student",
-            accessEnabled: false,
+            accessEnabled: true,
             courseAccess: {
               "rockwell-controle-analogico-supervisorio": false,
             },
+            enrolledCourses: [],
             createdAt: new Date().toISOString(),
           };
 

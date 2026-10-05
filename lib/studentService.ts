@@ -46,6 +46,7 @@ const profileCache = new Map<
   { data: UserProfile | null; timestamp: number }
 >();
 const inFlightProfilePromises = new Map<string, Promise<UserProfile | null>>();
+const inFlightSyncPromises = new Map<string, Promise<void>>();
 const PROFILE_CACHE_TTL = 60 * 1000;
 
 /**
@@ -70,30 +71,31 @@ export function clearUserProfileCache(userId?: string): void {
   if (userId) {
     profileCache.delete(userId);
     inFlightProfilePromises.delete(userId);
+    inFlightSyncPromises.delete(userId);
   } else {
     profileCache.clear();
     inFlightProfilePromises.clear();
+    inFlightSyncPromises.clear();
   }
 }
 
 /**
- * Salva ou atualiza os dados básicos do usuário no Firestore.
+ * Salva ou atualiza os dados do usuário no Firestore.
  * 
- * Chamado assim que o aluno faz login (via Google).
- * Se o usuário ainda não existir no Firestore, cria um registro inicial com:
+ * Chamado assim que o aluno faz login com Google.
+ * Se o usuário ainda não existir no Firestore, cria o registro inicial com:
  * - uid
  * - email
  * - displayName
  * - photoURL
  * - role: "student"
- * - accessEnabled: false (NÃO conceder acesso automaticamente)
- * - courseAccess: { "rockwell-controle-analogico-supervisorio": false }
+ * - accessEnabled: true (entra na plataforma)
+ * - courseAccess: { "rockwell-controle-analogico-supervisorio": false } (aulas protegidas)
+ * - enrolledCourses: []
  * - createdAt: data ISO
  * 
  * Se o usuário já existir, NÃO sobrescreve role, accessEnabled, courseAccess ou enrolledCourses.
  * Apenas sincroniza dados básicos do Google (displayName, email, photoURL).
- * 
- * Limpa qualquer profileCache existente antes de retornar.
  */
 export async function syncUserProfile(user: {
   uid: string;
@@ -101,67 +103,69 @@ export async function syncUserProfile(user: {
   displayName: string | null;
   photoURL?: string | null;
 }): Promise<void> {
-  try {
-    const userRef = doc(db, "users", user.uid);
-    const existing = await getDoc(userRef);
-
-    if (!existing.exists()) {
-      // 3. Novo aluno criado:
-      // role: "student", accessEnabled: true (entra na plataforma), courseAccess: { "rockwell-controle-analogico-supervisorio": false } (sem acesso às aulas)
-      // NÃO adiciona o curso em enrolledCourses e NÃO concede acesso às aulas até liberação do administrador.
-      const newProfile: {
-        uid: string;
-        email: string | null;
-        displayName: string | null;
-        photoURL: string | null;
-        role: "student" | "admin";
-        accessEnabled: boolean;
-        courseAccess: Record<string, boolean>;
-        createdAt: string;
-      } = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName || (user.email ? user.email.split("@")[0] : "Aluno"),
-        photoURL: user.photoURL || null,
-        role: "student",
-        accessEnabled: true,
-        courseAccess: {
-          "rockwell-controle-analogico-supervisorio": false,
-        },
-        createdAt: new Date().toISOString(),
-      };
-
-      await setDoc(userRef, newProfile);
-    } else {
-      // 6 & 7. Usuário existente: NÃO sobrescreve role, accessEnabled, courseAccess ou enrolledCourses.
-      // Apenas sincroniza dados básicos do Google (displayName, email, photoURL) quando necessário.
-      const existingData = existing.data() as UserProfile;
-      const updates: Record<string, any> = {};
-
-      const nextDisplayName = user.displayName || (user.email ? user.email.split("@")[0] : null);
-      if (nextDisplayName && nextDisplayName !== existingData.displayName) {
-        updates.displayName = nextDisplayName;
-      }
-      if (user.email && user.email !== existingData.email) {
-        updates.email = user.email;
-      }
-      if (user.photoURL !== undefined && user.photoURL !== existingData.photoURL) {
-        updates.photoURL = user.photoURL || null;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        updates.updatedAt = new Date().toISOString();
-        await updateDoc(userRef, updates);
-      }
-    }
-
-    // 11. Limpa qualquer profileCache existente após a criação/atualização
-    clearUserProfileCache(user.uid);
-  } catch (error) {
-    // 8. Não esconde erros do Firestore. Mostra o erro original completo com console.error().
-    console.error("Erro ao sincronizar perfil do usuário no Firestore (syncUserProfile):", error);
-    throw error;
+  // Evita chamadas concorrentes para o mesmo UID
+  if (inFlightSyncPromises.has(user.uid)) {
+    return inFlightSyncPromises.get(user.uid)!;
   }
+
+  const syncPromise = (async () => {
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const existing = await getDoc(userRef);
+
+      if (!existing.exists()) {
+        // Novo aluno criado:
+        // role: "student", accessEnabled: true (entra na plataforma), courseAccess = false (sem acesso às aulas)
+        const newProfile: UserProfile = {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || (user.email ? user.email.split("@")[0] : "Aluno"),
+          photoURL: user.photoURL || null,
+          role: "student",
+          accessEnabled: true,
+          courseAccess: {
+            "rockwell-controle-analogico-supervisorio": false,
+          },
+          enrolledCourses: [],
+          createdAt: new Date().toISOString(),
+        };
+
+        await setDoc(userRef, newProfile);
+      } else {
+        // Usuário existente: NÃO sobrescreve role, accessEnabled, courseAccess ou enrolledCourses.
+        // Apenas sincroniza dados básicos do Google (displayName, email, photoURL) quando necessário.
+        const existingData = existing.data() as UserProfile;
+        const updates: Record<string, any> = {};
+
+        const nextDisplayName = user.displayName || (user.email ? user.email.split("@")[0] : null);
+        if (nextDisplayName && nextDisplayName !== existingData.displayName) {
+          updates.displayName = nextDisplayName;
+        }
+        if (user.email && user.email !== existingData.email) {
+          updates.email = user.email;
+        }
+        if (user.photoURL !== undefined && user.photoURL !== existingData.photoURL) {
+          updates.photoURL = user.photoURL || null;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updates.updatedAt = new Date().toISOString();
+          await updateDoc(userRef, updates);
+        }
+      }
+
+      // Limpa qualquer profileCache existente após a criação/atualização
+      clearUserProfileCache(user.uid);
+    } catch (error) {
+      console.error("Erro ao sincronizar perfil do usuário:", error);
+      throw error;
+    }
+  })().finally(() => {
+    inFlightSyncPromises.delete(user.uid);
+  });
+
+  inFlightSyncPromises.set(user.uid, syncPromise);
+  return syncPromise;
 }
 
 /**
@@ -517,8 +521,8 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
       profileCache.set(userId, { data: null, timestamp: Date.now() });
       return null;
     } catch (err) {
-      console.warn("Aviso ao carregar perfil do Firestore:", err);
-      return null;
+      console.error("Erro ao carregar perfil do usuário do Firestore:", err);
+      throw err;
     }
   })().finally(() => {
     inFlightProfilePromises.delete(userId);

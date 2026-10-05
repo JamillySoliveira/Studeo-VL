@@ -90,5 +90,31 @@
       },
       "required": ["id"]
     }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "Perfis dos alunos e administradores"
+    },
+    "/courses/{courseId}": {
+      "schema": "courses",
+      "description": "Cursos disponíveis na plataforma"
+    },
+    "/modules/{moduleId}": {
+      "schema": "modules",
+      "description": "Módulos de cursos"
+    },
+    "/lessons/{lessonId}": {
+      "schema": "lessons",
+      "description": "Aulas com links de vídeo e formulários"
+    },
+    "/progress/{progressId}": {
+      "schema": "progress",
+      "description": "Progresso de aulas e formulários por aluno e curso"
+    },
+    "/deletedLessons/{lessonId}": {
+      "schema": "deletedLessons",
+      "description": "Registro de aulas excluídas pelo administrador"
+    }
   }
 }

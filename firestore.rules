@@ -2,18 +2,41 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // Helper para verificar se o usuário possui perfil em users/{uid}
+    function hasUserProfile() {
+      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Helper para obter dados do perfil do usuário
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     // Função auxiliar para verificar se o usuário é administrador
     function isAdmin() {
       return request.auth != null && (
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (hasUserProfile() && getUserProfile().role == 'admin') ||
         request.auth.token.email == 'adm.vlautomacao@gmail.com'
+      );
+    }
+
+    // Helper para verificar se o usuário tem acesso às aulas do curso
+    function hasCourseAccess(courseId) {
+      return hasUserProfile() && (
+        isAdmin() ||
+        (
+          getUserProfile().courseAccess != null && (
+            getUserProfile().courseAccess.get(courseId, false) == true ||
+            (courseId == 'rockwell-basico' && getUserProfile().courseAccess.get('rockwell-controle-analogico-supervisorio', false) == true) ||
+            (courseId == 'rockwell-controle-analogico-supervisorio' && getUserProfile().courseAccess.get('rockwell-basico', false) == true)
+          )
+        )
       );
     }
 
     // Regra para usuários:
     // - Leitura: aluno acessa seu perfil; admin visualiza todos
-    // - Criação: usuário autenticado só cria o próprio users/{uid}, como student com acesso à plataforma mas sem cursos liberados
+    // - Criação: usuário autenticado só cria o próprio users/{uid}, como student com acesso à plataforma (accessEnabled: true) mas sem cursos liberados (courseAccess: false)
     // - Atualização: somente admin altera role, accessEnabled, courseAccess e enrolledCourses
     // - Exclusão: somente admin
     match /users/{userId} {
@@ -24,6 +47,7 @@ service cloud.firestore {
           request.auth.uid == userId &&
           request.resource.data.uid == userId &&
           request.resource.data.role == 'student' &&
+          request.resource.data.accessEnabled == true &&
           (!('enrolledCourses' in request.resource.data) || request.resource.data.enrolledCourses.size() == 0) &&
           (!('courseAccess' in request.resource.data) || request.resource.data.courseAccess.get('rockwell-controle-analogico-supervisorio', false) == false)
         )
@@ -44,7 +68,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
-    // Cursos, Módulos e Aulas: leitura permitida para todos autenticados, edição exclusiva para admin
+    // Cursos e Módulos: catálogo da plataforma
     match /courses/{courseId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -55,8 +79,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    // Aulas: a leitura exige usuário autenticado, perfil existente e role admin OU courseAccess[courseId] == true
     match /lessons/{lessonId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && hasUserProfile() && (
+        isAdmin() || (resource != null && hasCourseAccess(resource.data.courseId))
+      );
       allow write: if isAdmin();
     }
     

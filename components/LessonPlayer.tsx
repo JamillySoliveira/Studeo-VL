@@ -19,7 +19,7 @@
  *      diretamente no player, sem necessidade de sair da tela de estudo.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Check,
   CheckCircle2,
@@ -36,6 +36,22 @@ import {
 import { Course, Lesson, UserProfile } from "@/lib/types";
 import { getVideoEmbedUrl } from "@/lib/courseData";
 import { isDemoUser } from "@/lib/courseService";
+
+/**
+ * Mascara parcialmente o e-mail do aluno para a marca d'água de proteção.
+ * Exemplo: joaosilva@gmail.com -> jo***@gmail.com
+ */
+function maskEmail(email?: string | null): string {
+  if (!email) return "";
+  const atIndex = email.indexOf("@");
+  if (atIndex <= 0) return "***";
+  const userPart = email.slice(0, atIndex);
+  const domainPart = email.slice(atIndex);
+  if (userPart.length <= 2) {
+    return `${userPart.charAt(0)}***${domainPart}`;
+  }
+  return `${userPart.slice(0, 2)}***${domainPart}`;
+}
 
 interface LessonPlayerProps {
   course: Course;
@@ -153,6 +169,31 @@ export function LessonPlayer({
   const isAdmin = user?.role === "admin" && !isDemo;
   const [isAdminEditing, setIsAdminEditing] = useState(false);
 
+  // =======================================================================
+  // CAMADA DE SEGURANÇA E PROTEÇÃO (MARCA D'ÁGUA E BLOQUEIO SEGURO)
+  // =======================================================================
+  // Estado para interrupção de reprodução caso haja sinal confiável de captura de tela
+  const [isPlaybackInterrupted, setIsPlaybackInterrupted] = useState(false);
+  // Posição alternada discreta da marca d'água sobre o vídeo
+  const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
+
+  // Alterna suavemente a posição da marca d'água a cada 25 segundos sem impacto de performance
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setWatermarkPosIndex((prev) => (prev + 1) % 4);
+    }, 25000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const WATERMARK_POSITIONS = [
+    "top-3.5 left-3.5 text-left",
+    "top-3.5 right-3.5 text-right",
+    "bottom-10 right-3.5 text-right",
+    "bottom-10 left-3.5 text-left",
+  ];
+  const currentWatermarkPos = WATERMARK_POSITIONS[watermarkPosIndex] || WATERMARK_POSITIONS[0];
+
   // Lista direta das aulas do curso (sem módulos)
   const lessons = course.lessons || [];
 
@@ -262,14 +303,34 @@ export function LessonPlayer({
             </p>
           </div>
         ) : embedUrl ? (
-          <iframe
-            key={embedUrl}
-            src={embedUrl}
-            title={currentLesson.title}
-            className="w-full h-full border-0"
-            allow="autoplay; encrypted-media; fullscreen"
-            allowFullScreen
-          />
+          <>
+            <iframe
+              key={embedUrl}
+              src={embedUrl}
+              title={currentLesson.title}
+              className="w-full h-full border-0"
+              allow="autoplay; encrypted-media; fullscreen"
+              allowFullScreen
+            />
+
+            {/* Marca d'água dinâmica do aluno com baixa opacidade e sem bloquear controles */}
+            {user && !isDemo && hasAccess && !isPlaybackInterrupted && (
+              <div
+                id="vl-player-watermark"
+                className={`absolute z-20 pointer-events-none select-none transition-all duration-1000 ease-in-out px-2.5 py-1 rounded-md bg-black/25 dark:bg-black/40 backdrop-blur-[0.5px] border border-white/5 text-[10px] sm:text-xs text-white/35 font-mono tracking-tight leading-tight shadow-xs ${currentWatermarkPos}`}
+                style={{ userSelect: "none" }}
+              >
+                <div className="font-semibold text-white/45 truncate max-w-[200px] sm:max-w-[260px]">
+                  Aluno: {user.displayName || "Aluno"}
+                </div>
+                {user.email && (
+                  <div className="text-white/35 truncate max-w-[200px] sm:max-w-[260px]">
+                    {maskEmail(user.email)}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900 text-slate-400 space-y-3">
             <Video className="w-12 h-12 text-slate-700 stroke-[1.5]" />
@@ -279,6 +340,33 @@ export function LessonPlayer({
             <p className="text-xs text-slate-500 max-w-sm">
               O link do vídeo (YouTube ou Google Drive) será configurado em breve. Você pode adiantar a leitura da descrição e a atividade prática.
             </p>
+          </div>
+        )}
+
+        {/* ================= CAMADA DE SEGURANÇA: OVERLAY DE INTERRUPÇÃO ================= */}
+        {isPlaybackInterrupted && (
+          <div
+            id="vl-security-overlay"
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 text-white space-y-4 backdrop-blur-xs animate-in fade-in duration-200"
+          >
+            <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5 max-w-sm">
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                Reprodução interrompida
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Por segurança, a reprodução desta aula foi interrompida.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPlaybackInterrupted(false)}
+              className="py-2.5 px-5 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs sm:text-sm font-bold rounded-xl transition-colors cursor-pointer shadow-md"
+            >
+              Voltar para a aula
+            </button>
           </div>
         )}
       </div>

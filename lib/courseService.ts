@@ -313,13 +313,39 @@ export function checkUserCourseAccess(
   courseId: string = INITIAL_COURSE_ID
 ): boolean {
   if (!user) return false;
-  if (user.accessEnabled === false) return false;
   // Aluno Demonstração nunca possui papel de administrador
   if (user.role === "admin" && !isDemoUser(user)) return true;
 
   const effectiveCourseId = normalizeCourseId(courseId);
-  const accessibleIds = getUserAccessibleCourseIds(user);
-  return accessibleIds.includes(effectiveCourseId);
+
+  // O acesso às aulas deve ser controlado exclusivamente por: courseAccess[courseId] === true
+  if (user.courseAccess) {
+    if (user.courseAccess[effectiveCourseId] === true) return true;
+    if (
+      effectiveCourseId === "rockwell-basico" &&
+      user.courseAccess["rockwell-controle-analogico-supervisorio"] === true
+    ) {
+      return true;
+    }
+    if (
+      effectiveCourseId === "rockwell-controle-analogico-supervisorio" &&
+      user.courseAccess["rockwell-basico"] === true
+    ) {
+      return true;
+    }
+  }
+
+  // Compatibilidade com enrolledCourses para cursos liberados pelo administrador
+  const enrolled = Array.isArray(user.enrolledCourses) ? user.enrolledCourses : [];
+  if (
+    enrolled.includes(effectiveCourseId) ||
+    (effectiveCourseId === "rockwell-basico" &&
+      enrolled.includes("rockwell-controle-analogico-supervisorio"))
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -481,7 +507,10 @@ export async function getCourseData(
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
           getDoc(doc(db, "courses", effectiveCourseId)).catch(() => null),
-          getDocs(collection(db, "lessons")),
+          getDocs(collection(db, "lessons")).catch((err) => {
+            console.warn("Aulas não carregadas do Firestore (verifique courseAccess do usuário):", err);
+            return null;
+          }),
           getDocs(collection(db, "modules")).catch(() => null),
         ]);
 
@@ -632,7 +661,10 @@ export async function getAllCourses(
       const [deletedSnapshot, lessonsSnapshot, modulesSnapshot, coursesSnapshot] =
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
-          getDocs(collection(db, "lessons")),
+          getDocs(collection(db, "lessons")).catch((err) => {
+            console.warn("Aulas não carregadas do Firestore (verifique courseAccess do usuário):", err);
+            return null;
+          }),
           getDocs(collection(db, "modules")).catch(() => null),
           getDocs(collection(db, "courses")).catch(() => null),
         ]);
@@ -1035,7 +1067,7 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
 
     return users;
   } catch (error) {
-    console.warn("Aviso ao buscar usuários no Firestore:", error);
+    console.error("Erro ao buscar usuários no Firestore:", error);
     return [];
   }
 }
