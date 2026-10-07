@@ -68,7 +68,6 @@ export function LoginScreen({ onSuccess, onDemoLogin }: LoginScreenProps) {
       setSuccessMessage("Autenticado com sucesso! Carregando seus cursos...");
       onSuccess?.();
     } catch (err: any) {
-      console.error("Erro ao sincronizar perfil do usuário:", err);
       handleFirebaseError(err);
     } finally {
       setLoading(false);

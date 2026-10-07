@@ -55,7 +55,6 @@ import {
   getCourseData,
   fetchAllUsers,
   toggleUserAccess,
-  updateUserCourseAccess,
   updateUserEnrolledCourses,
   addLesson,
   updateLesson,
@@ -376,23 +375,17 @@ export function AdminView({
         startTransition(() => {
           setUsers(data);
           const drafts: Record<string, string[]> = {};
-          // Registra rascunho com base exclusivamente em courseAccess (excluindo administradores)
+          // Registra rascunho apenas para estudantes (excluindo administradores)
           data.forEach((u) => {
             if (u.role !== "admin") {
-              const activeCourses: string[] = [];
+              const enrolled = Array.isArray(u.enrolledCourses) ? [...u.enrolledCourses] : [];
               if (
-                u.courseAccess?.["rockwell-controle-analogico-supervisorio"] === true ||
-                u.courseAccess?.["rockwell-basico"] === true
+                u.courseAccess?.["rockwell-controle-analogico-supervisorio"] &&
+                !enrolled.includes("rockwell-basico")
               ) {
-                activeCourses.push("rockwell-basico");
+                enrolled.push("rockwell-basico");
               }
-              if (u.courseAccess?.["rockwell-intermediario"] === true) {
-                activeCourses.push("rockwell-intermediario");
-              }
-              if (u.courseAccess?.["rockwell-avancado"] === true) {
-                activeCourses.push("rockwell-avancado");
-              }
-              drafts[u.uid] = activeCourses;
+              drafts[u.uid] = enrolled;
             }
           });
           setEnrolledDrafts(drafts);
@@ -660,45 +653,24 @@ export function AdminView({
     });
   };
 
-  // Salva as permissões de acesso (courseAccess) do aluno no Firestore
+  // Salva exclusivamente o array enrolledCourses do aluno no Firestore
   const handleSaveEnrolledCourses = async (userId: string, userName: string) => {
     try {
       setSavingEnrolledUserId(userId);
       setUserFeedback(null);
 
-      const targetSelected = enrolledDrafts[userId] || [];
-      const isBasicoSelected = targetSelected.includes("rockwell-basico");
-      const isIntermediarioSelected = targetSelected.includes("rockwell-intermediario");
-      const isAvancadoSelected = targetSelected.includes("rockwell-avancado");
-
-      const newCourseAccess: Record<string, boolean> = {
-        "rockwell-controle-analogico-supervisorio": isBasicoSelected,
-        "rockwell-basico": isBasicoSelected,
-        "rockwell-intermediario": isIntermediarioSelected,
-        "rockwell-avancado": isAvancadoSelected,
-      };
-
-      // Atualiza courseAccess como FONTE ÚNICA DE VERDADE para liberação das aulas
-      // Mantém enrolledCourses atualizado em paralelo por compatibilidade com dados legados
-      await updateUserCourseAccess(userId, newCourseAccess, targetSelected);
+      const targetEnrolled = enrolledDrafts[userId] || [];
+      await updateUserEnrolledCourses(userId, targetEnrolled);
 
       setUsers((prev) =>
-        prev.map((u) =>
-          u.uid === userId
-            ? {
-                ...u,
-                courseAccess: newCourseAccess,
-                enrolledCourses: targetSelected,
-              }
-            : u
-        )
+        prev.map((u) => (u.uid === userId ? { ...u, enrolledCourses: targetEnrolled } : u))
       );
 
-      setUserFeedback(`Permissões de acesso aos cursos de ${userName} salvas com sucesso no Firestore!`);
+      setUserFeedback(`Cursos liberados de ${userName} salvos com sucesso no Firestore!`);
       setTimeout(() => setUserFeedback(null), 4000);
     } catch (err) {
       console.error(err);
-      setUserFeedback("Erro ao salvar permissões de acesso do aluno.");
+      setUserFeedback("Erro ao salvar cursos matriculados do aluno.");
     } finally {
       setSavingEnrolledUserId(null);
     }
@@ -741,16 +713,14 @@ export function AdminView({
   const activeStudents = students.filter((u) => u.accessEnabled !== false).length;
   const blockedStudents = students.filter((u) => u.accessEnabled === false).length;
 
-  const countBasico = students.filter(
-    (u) =>
-      u.courseAccess?.["rockwell-controle-analogico-supervisorio"] === true ||
-      u.courseAccess?.["rockwell-basico"] === true
+  const countBasico = students.filter((u) =>
+    (u.enrolledCourses || []).includes("rockwell-basico")
   ).length;
-  const countIntermediario = students.filter(
-    (u) => u.courseAccess?.["rockwell-intermediario"] === true
+  const countIntermediario = students.filter((u) =>
+    (u.enrolledCourses || []).includes("rockwell-intermediario")
   ).length;
-  const countAvancado = students.filter(
-    (u) => u.courseAccess?.["rockwell-avancado"] === true
+  const countAvancado = students.filter((u) =>
+    (u.enrolledCourses || []).includes("rockwell-avancado")
   ).length;
 
   // Lista de alunos com filtro de busca (excluindo qualquer administrador)
@@ -1455,11 +1425,11 @@ export function AdminView({
                       </div>
                     </div>
 
-                    {/* Linha 2: Cursos (Checkboxes de liberação via courseAccess) */}
+                    {/* Linha 2: Cursos (Checkboxes do enrolledCourses) */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
                       <div className="space-y-1.5">
                         <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                          Cursos Liberados (courseAccess):
+                          Cursos Liberados (enrolledCourses):
                         </span>
 
                         <div className="flex flex-wrap items-center gap-5">

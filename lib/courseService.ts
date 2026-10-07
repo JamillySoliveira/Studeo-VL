@@ -194,7 +194,7 @@ export function normalizeCourseId(courseId?: string): string {
  * Regras de Acesso:
  * - Se accessEnabled === false, o usuário não acessa nenhum curso.
  * - Administradores (role === "admin") possuem acesso liberado a todos os cursos.
- * - Alunos regulares acessam apenas os cursos onde courseAccess[courseId] === true no seu perfil no Firestore.
+ * - Alunos regulares acessam apenas os cursos listados no array `enrolledCourses` do seu perfil no Firestore.
  */
 export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
   if (!user) return [];
@@ -207,11 +207,13 @@ export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
     return AVAILABLE_COURSES.map((c) => c.id);
   }
 
+  const enrolled = Array.isArray(user.enrolledCourses) ? user.enrolledCourses : [];
   const accessible: string[] = [];
 
-  // Autorização estrita e exclusiva via courseAccess[courseId] === true
-  // NÃO utiliza enrolledCourses para autorização
+  // Verifica cada curso liberado no perfil do aluno (suporte a enrolledCourses e courseAccess)
   const hasRockwellBasico =
+    enrolled.includes("rockwell-basico") ||
+    enrolled.includes("rockwell-controle-analogico-supervisorio") ||
     user.courseAccess?.["rockwell-controle-analogico-supervisorio"] === true ||
     user.courseAccess?.["rockwell-basico"] === true;
 
@@ -219,11 +221,17 @@ export function getUserAccessibleCourseIds(user: UserProfile | null): string[] {
     accessible.push("rockwell-basico");
   }
 
-  if (user.courseAccess?.["rockwell-intermediario"] === true) {
+  if (
+    enrolled.includes("rockwell-intermediario") ||
+    user.courseAccess?.["rockwell-intermediario"] === true
+  ) {
     accessible.push("rockwell-intermediario");
   }
 
-  if (user.courseAccess?.["rockwell-avancado"] === true) {
+  if (
+    enrolled.includes("rockwell-avancado") ||
+    user.courseAccess?.["rockwell-avancado"] === true
+  ) {
     accessible.push("rockwell-avancado");
   }
 
@@ -299,43 +307,19 @@ export function sanitizeCoursesForUser(
 
 /**
  * Verifica se um aluno específico possui permissão para acessar determinado curso.
- * FONTE ÚNICA DE VERDADE: courseAccess[courseId] === true
- * 
- * A autorização para um aluno acessar as aulas é baseada EXCLUSIVAMENTE em:
- * courseAccess[courseId] === true (para o curso atual: courseAccess["rockwell-controle-analogico-supervisorio"] === true)
- * ou quando o usuário for administrador.
- * 
- * NÃO utiliza enrolledCourses para autorizar acesso às aulas sob nenhuma circunstância.
  */
 export function checkUserCourseAccess(
   user: UserProfile | null,
   courseId: string = INITIAL_COURSE_ID
 ): boolean {
   if (!user) return false;
+  if (user.accessEnabled === false) return false;
   // Aluno Demonstração nunca possui papel de administrador
   if (user.role === "admin" && !isDemoUser(user)) return true;
 
   const effectiveCourseId = normalizeCourseId(courseId);
-
-  // O acesso às aulas deve ser controlado exclusivamente por: courseAccess[courseId] === true
-  if (user.courseAccess) {
-    if (user.courseAccess[effectiveCourseId] === true) return true;
-    if (
-      effectiveCourseId === "rockwell-basico" &&
-      user.courseAccess["rockwell-controle-analogico-supervisorio"] === true
-    ) {
-      return true;
-    }
-    if (
-      effectiveCourseId === "rockwell-controle-analogico-supervisorio" &&
-      user.courseAccess["rockwell-basico"] === true
-    ) {
-      return true;
-    }
-  }
-
-  // enrolledCourses NÃO é utilizado para autorização de acesso às aulas
-  return false;
+  const accessibleIds = getUserAccessibleCourseIds(user);
+  return accessibleIds.includes(effectiveCourseId);
 }
 
 /**
@@ -497,10 +481,7 @@ export async function getCourseData(
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
           getDoc(doc(db, "courses", effectiveCourseId)).catch(() => null),
-          getDocs(collection(db, "lessons")).catch((err) => {
-            console.warn("Aulas não carregadas do Firestore (verifique courseAccess do usuário):", err);
-            return null;
-          }),
+          getDocs(collection(db, "lessons")),
           getDocs(collection(db, "modules")).catch(() => null),
         ]);
 
@@ -651,10 +632,7 @@ export async function getAllCourses(
       const [deletedSnapshot, lessonsSnapshot, modulesSnapshot, coursesSnapshot] =
         await Promise.all([
           getDocs(collection(db, "deletedLessons")).catch(() => null),
-          getDocs(collection(db, "lessons")).catch((err) => {
-            console.warn("Aulas não carregadas do Firestore (verifique courseAccess do usuário):", err);
-            return null;
-          }),
+          getDocs(collection(db, "lessons")),
           getDocs(collection(db, "modules")).catch(() => null),
           getDocs(collection(db, "courses")).catch(() => null),
         ]);
@@ -1052,16 +1030,12 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
 
     const users: UserProfile[] = [];
     snapshot.forEach((item) => {
-      const data = item.data() as UserProfile;
-      users.push({
-        ...data,
-        uid: data.uid || item.id,
-      });
+      users.push(item.data() as UserProfile);
     });
 
     return users;
   } catch (error) {
-    console.error("Erro ao buscar usuários no Firestore:", error);
+    console.warn("Aviso ao buscar usuários no Firestore:", error);
     return [];
   }
 }
@@ -1087,54 +1061,30 @@ export async function toggleUserAccess(
 }
 
 /**
- * Atualiza o objeto courseAccess do aluno no Firestore.
- * FONTE ÚNICA DE VERDADE PARA AUTORIZAÇÃO DE AULAS.
- * Opcionalmente atualiza enrolledCourses em paralelo para compatibilidade com registros legados.
- */
-export async function updateUserCourseAccess(
-  userId: string,
-  courseAccess: Record<string, boolean>,
-  enrolledCourses?: string[]
-): Promise<void> {
-  clearUserProfileCache(userId);
-  try {
-    const userRef = doc(db, "users", userId);
-    const updates: Record<string, any> = {
-      courseAccess,
-      updatedAt: new Date().toISOString(),
-    };
-    if (enrolledCourses) {
-      updates.enrolledCourses = enrolledCourses;
-    }
-    await updateDoc(userRef, updates);
-  } catch (error) {
-    console.error("Erro ao atualizar permissões courseAccess do usuário:", error);
-    throw error;
-  }
-}
-
-/**
  * Atualiza a lista de cursos liberados para determinado aluno (campo enrolledCourses).
- * Mantido para compatibilidade. Atualiza courseAccess como fonte primária de verdade.
  */
 export async function updateUserEnrolledCourses(
   userId: string,
   enrolledCourses: string[]
 ): Promise<void> {
-  const isBasico =
-    enrolledCourses.includes("rockwell-basico") ||
-    enrolledCourses.includes("rockwell-controle-analogico-supervisorio");
-  const isIntermediario = enrolledCourses.includes("rockwell-intermediario");
-  const isAvancado = enrolledCourses.includes("rockwell-avancado");
-
-  const courseAccess: Record<string, boolean> = {
-    "rockwell-controle-analogico-supervisorio": isBasico,
-    "rockwell-basico": isBasico,
-    "rockwell-intermediario": isIntermediario,
-    "rockwell-avancado": isAvancado,
-  };
-
-  await updateUserCourseAccess(userId, courseAccess, enrolledCourses);
+  clearUserProfileCache(userId);
+  try {
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      enrolledCourses,
+      courseAccess: {
+        "rockwell-controle-analogico-supervisorio":
+          enrolledCourses.includes("rockwell-basico") ||
+          enrolledCourses.includes("rockwell-controle-analogico-supervisorio"),
+        "rockwell-intermediario": enrolledCourses.includes("rockwell-intermediario"),
+        "rockwell-avancado": enrolledCourses.includes("rockwell-avancado"),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar cursos matriculados do usuário:", error);
+    throw error;
+  }
 }
 
 /* ============================================================

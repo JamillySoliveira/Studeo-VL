@@ -37,6 +37,32 @@ import { Course, Lesson, UserProfile } from "@/lib/types";
 import { getVideoEmbedUrl } from "@/lib/courseData";
 import { isDemoUser } from "@/lib/courseService";
 
+/**
+ * Converte links do Google Drive (/file/d/ID/view para /file/d/ID/preview)
+ * e YouTube para reprodução direta via iframe dentro da plataforma.
+ */
+function formatVideoEmbedUrl(urlOrId?: string): string {
+  if (!urlOrId) return "";
+  const trimmed = urlOrId.trim();
+  if (!trimmed) return "";
+
+  // Converte links do Google Drive /file/d/ID/view para /file/d/ID/preview
+  if (trimmed.includes("drive.google.com/file/d/")) {
+    const fileMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (fileMatch && fileMatch[1]) {
+      return `https://drive.google.com/file/d/${fileMatch[1]}/preview`;
+    }
+  }
+
+  // Google Drive com query param ?id=ID
+  const idMatch = trimmed.match(/drive\.google\.com\/.*[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch && idMatch[1]) {
+    return `https://drive.google.com/file/d/${idMatch[1]}/preview`;
+  }
+
+  return getVideoEmbedUrl(trimmed);
+}
+
 interface LessonPlayerProps {
   course: Course;
   currentLesson: Lesson | null;
@@ -52,40 +78,6 @@ interface LessonPlayerProps {
 }
 
 // Subcomponente com key={currentLesson.id} para gerenciar o estado da edição sem useEffect
-/**
- * Converte automaticamente links do Google Drive e YouTube para o formato de embed seguro.
- * Converte expressamente:
- * - /file/d/ID/view -> https://drive.google.com/file/d/ID/preview
- * - https://drive.google.com/file/d/ID/view -> https://drive.google.com/file/d/ID/preview
- * - Links com parâmetros adicionais mantendo exclusivamente a rota canônica /preview
- * Garante que o vídeo seja reproduzido via iframe dentro da plataforma, sem abrir em nova aba no mobile ou desktop.
- */
-function getSafeVideoEmbedUrl(urlOrId?: string): string {
-  if (!urlOrId || typeof urlOrId !== "string") return "";
-  const trimmed = urlOrId.trim();
-  if (!trimmed) return "";
-
-  // 1. Google Drive: extrai o ID e força estritamente a rota canônica /preview
-  const driveFileMatch = trimmed.match(/(?:drive\.google\.com)?\/?file\/d\/([a-zA-Z0-9_-]+)/i);
-  if (driveFileMatch && driveFileMatch[1]) {
-    return `https://drive.google.com/file/d/${driveFileMatch[1]}/preview`;
-  }
-
-  // Google Drive com parâmetro id (open?id=, uc?id=)
-  const driveIdParamMatch = trimmed.match(/drive\.google\.com\/[^?#]*[?&]id=([a-zA-Z0-9_-]+)/i);
-  if (driveIdParamMatch && driveIdParamMatch[1]) {
-    return `https://drive.google.com/file/d/${driveIdParamMatch[1]}/preview`;
-  }
-
-  // ID isolado do Google Drive (geralmente >= 25 caracteres)
-  if (/^[a-zA-Z0-9_-]{25,}$/.test(trimmed) && !trimmed.includes(".")) {
-    return `https://drive.google.com/file/d/${trimmed}/preview`;
-  }
-
-  // 2. YouTube ou fallback compatível através de getVideoEmbedUrl
-  return getVideoEmbedUrl(trimmed);
-}
-
 function AdminVideoEditor({
   initialUrl,
   lessonId,
@@ -106,9 +98,7 @@ function AdminVideoEditor({
     try {
       setSaving(true);
       setFeedback(null);
-      const cleaned = url.trim();
-      const safeUrl = getSafeVideoEmbedUrl(cleaned);
-      await onSave(safeUrl && safeUrl.includes("drive.google.com") ? safeUrl : cleaned);
+      await onSave(url.trim());
       setFeedback("Link do vídeo salvo com sucesso!");
       setTimeout(() => {
         setFeedback(null);
@@ -226,7 +216,7 @@ export function LessonPlayer({
 
   // URL do vídeo (YouTube ou Google Drive) para embed em iframe (bloqueada para Aluno Demonstração)
   const videoSource = isDemo ? "" : (currentLesson.videoUrl || currentLesson.youtubeUrl || "");
-  const embedUrl = isDemo ? "" : getSafeVideoEmbedUrl(videoSource);
+  const embedUrl = isDemo ? "" : formatVideoEmbedUrl(videoSource);
   const currentNumber = String(currentLesson.order || currentIndex + 1).padStart(2, "0");
 
   return (
@@ -555,5 +545,3 @@ export function LessonPlayer({
     </div>
   );
 }
-
-export default LessonPlayer;
