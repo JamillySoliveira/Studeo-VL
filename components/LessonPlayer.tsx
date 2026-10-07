@@ -37,32 +37,6 @@ import { Course, Lesson, UserProfile } from "@/lib/types";
 import { getVideoEmbedUrl } from "@/lib/courseData";
 import { isDemoUser } from "@/lib/courseService";
 
-/**
- * Converte links do Google Drive (/file/d/ID/view para /file/d/ID/preview)
- * e YouTube para reprodução direta via iframe dentro da plataforma.
- */
-function formatVideoEmbedUrl(urlOrId?: string): string {
-  if (!urlOrId) return "";
-  const trimmed = urlOrId.trim();
-  if (!trimmed) return "";
-
-  // Converte links do Google Drive /file/d/ID/view para /file/d/ID/preview
-  if (trimmed.includes("drive.google.com/file/d/")) {
-    const fileMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (fileMatch && fileMatch[1]) {
-      return `https://drive.google.com/file/d/${fileMatch[1]}/preview`;
-    }
-  }
-
-  // Google Drive com query param ?id=ID
-  const idMatch = trimmed.match(/drive\.google\.com\/.*[?&]id=([a-zA-Z0-9_-]+)/);
-  if (idMatch && idMatch[1]) {
-    return `https://drive.google.com/file/d/${idMatch[1]}/preview`;
-  }
-
-  return getVideoEmbedUrl(trimmed);
-}
-
 interface LessonPlayerProps {
   course: Course;
   currentLesson: Lesson | null;
@@ -216,7 +190,19 @@ export function LessonPlayer({
 
   // URL do vídeo (YouTube ou Google Drive) para embed em iframe (bloqueada para Aluno Demonstração)
   const videoSource = isDemo ? "" : (currentLesson.videoUrl || currentLesson.youtubeUrl || "");
-  const embedUrl = isDemo ? "" : formatVideoEmbedUrl(videoSource);
+  const getDrivePreviewUrl = (url: string) => {
+    if (!url) return "";
+    const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1]) {
+      return `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
+    }
+    const driveIdParam = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (driveIdParam && driveIdParam[1]) {
+      return `https://drive.google.com/file/d/${driveIdParam[1]}/preview`;
+    }
+    return getVideoEmbedUrl(url);
+  };
+  const embedUrl = isDemo ? "" : getDrivePreviewUrl(videoSource);
   const currentNumber = String(currentLesson.order || currentIndex + 1).padStart(2, "0");
 
   return (
