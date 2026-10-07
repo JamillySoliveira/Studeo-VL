@@ -31,7 +31,6 @@
  */
 
 import React, { useEffect, useState, useTransition, useMemo, useCallback } from "react";
-import dynamic from "next/dynamic";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { UserProfile, Course, Lesson } from "@/lib/types";
@@ -45,7 +44,6 @@ import {
   toggleFormProgress,
   getUserProfile,
 } from "@/lib/studentService";
-import { Lock } from "lucide-react";
 import {
   getCourseData,
   getAllCourses,
@@ -57,64 +55,19 @@ import {
   sanitizeCoursesForUser,
 } from "@/lib/courseService";
 
-// Componentes da Aplicação de Carga Imediata
+// Componentes da Aplicação
 import { LoginScreen } from "@/components/LoginScreen";
 import { Sidebar, TabType } from "@/components/Sidebar";
 import { Navbar } from "@/components/Navbar";
 import { DashboardView } from "@/components/DashboardView";
-
-/**
- * Esqueleto sutil e leve para transição de abas sob demanda (Code Splitting)
- */
-function TabLoadingSkeleton() {
-  return (
-    <div className="max-w-5xl mx-auto py-4 sm:py-6 space-y-4 animate-pulse">
-      <div className="h-7 bg-slate-200 dark:bg-slate-800 rounded-xl w-48 mb-4" />
-      <div className="h-36 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="h-28 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800" />
-        <div className="h-28 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800" />
-      </div>
-    </div>
-  );
-}
-
-// =======================================================================
-// CARREGAMENTO SOB DEMANDA (DYNAMIC IMPORTS / DIVISÃO DE CÓDIGO)
-// Abas secundárias são carregadas somente quando o aluno ou admin as acessa.
-// =======================================================================
-const CourseView = dynamic(
-  () => import("@/components/CourseView").then((mod) => mod.CourseView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const LessonPlayer = dynamic(
-  () => import("@/components/LessonPlayer").then((mod) => mod.LessonPlayer),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const NoticesView = dynamic(
-  () => import("@/components/NoticesView").then((mod) => mod.NoticesView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const ProgressView = dynamic(
-  () => import("@/components/ProgressView").then((mod) => mod.ProgressView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const CertificateView = dynamic(
-  () => import("@/components/CertificateView").then((mod) => mod.CertificateView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const ProfileView = dynamic(
-  () => import("@/components/ProfileView").then((mod) => mod.ProfileView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const HelpView = dynamic(
-  () => import("@/components/HelpView").then((mod) => mod.HelpView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
-const AdminView = dynamic(
-  () => import("@/components/AdminView").then((mod) => mod.AdminView),
-  { loading: () => <TabLoadingSkeleton /> }
-);
+import { CourseView } from "@/components/CourseView";
+import { LessonPlayer } from "@/components/LessonPlayer";
+import { NoticesView } from "@/components/NoticesView";
+import { ProgressView } from "@/components/ProgressView";
+import { CertificateView } from "@/components/CertificateView";
+import { ProfileView } from "@/components/ProfileView";
+import { HelpView } from "@/components/HelpView";
+import { AdminView } from "@/components/AdminView";
 
 export default function StudentApp() {
   // =====================================================================
@@ -134,8 +87,6 @@ export default function StudentApp() {
   const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_COURSE_ID);
   // Indicador de carregamento dos cursos do Firestore
   const [coursesLoading, setCoursesLoading] = useState(true);
-  // Mensagem de erro caso a consulta de cursos ao Firestore falhe
-  const [coursesError, setCoursesError] = useState<string | null>(null);
   // Lista com todos os cursos cadastrados na plataforma (iniciam sem aulas fictícias)
   const [allCourses, setAllCourses] = useState<Course[]>(() =>
     AVAILABLE_COURSES.map((c) => ({
@@ -219,37 +170,28 @@ export default function StudentApp() {
   // SINCRONIZAÇÃO DE DADOS COM O FIRESTORE (ALTA PERFORMANCE)
   // =====================================================================
 
-  // 1. Carrega todos os cursos do Firestore SOMENTE DEPOIS que o Firebase Auth confirmar o usuário
+  // 1. Carrega todos os cursos na inicialização (compartilha a promessa em andamento e gerencia o loading)
   useEffect(() => {
-    // Elimina a condição de corrida: NÃO executa getAllCourses() prematuramente se o usuário ainda não foi autenticado
-    if (authLoading || !user?.uid) {
-      return;
-    }
-
     let isMounted = true;
 
-    getAllCourses(user)
+    getAllCourses()
       .then((courses) => {
         if (!isMounted) return;
         startTransition(() => {
           setAllCourses(courses);
           setCoursesLoading(false);
-          setCoursesError(null);
         });
       })
       .catch((err) => {
         console.error("Erro ao carregar cursos do Firestore:", err);
         if (!isMounted) return;
-        startTransition(() => {
-          setCoursesLoading(false);
-          setCoursesError(err?.message || "Erro ao carregar cursos do Firestore.");
-        });
+        setCoursesLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [authLoading, user?.uid, user]);
+  }, []);
 
   // 2. Busca o progresso detalhado do curso ativo em segundo plano (não bloqueia exibição das aulas)
   useEffect(() => {
@@ -304,7 +246,7 @@ export default function StudentApp() {
       async (firebaseUser: User | null) => {
         if (firebaseUser) {
           try {
-            // Sincroniza obrigatoriamente o usuário com o Firestore antes de prosseguir
+            // Sincroniza imediatamente o usuário com o Firestore
             await syncUserProfile({
               uid: firebaseUser.uid,
               email: firebaseUser.email,
@@ -312,21 +254,14 @@ export default function StudentApp() {
               photoURL: firebaseUser.photoURL,
             });
           } catch (syncErr) {
-            console.error("Erro ao sincronizar perfil do usuário:", syncErr);
+            console.error("Erro ao sincronizar usuário no Firestore (onAuthStateChanged):", syncErr);
           }
 
-          // Limpa o cache antes de carregar o perfil oficial do Firestore
+          // 11. Limpa o cache antes de carregar o perfil oficial
           clearUserProfileCache(firebaseUser.uid);
 
           // Lê permissões e dados oficiais salvos no documento do usuário no Firestore
-          let dbProfile: UserProfile | null = null;
-          try {
-            dbProfile = await getUserProfile(firebaseUser.uid);
-          } catch (profileErr) {
-            console.error("Erro ao carregar perfil do usuário:", profileErr);
-          }
-
-          const isAdminEmail = firebaseUser.email?.toLowerCase() === "adm.vlautomacao@gmail.com";
+          const dbProfile = await getUserProfile(firebaseUser.uid);
 
           const studentProfile: UserProfile = dbProfile || {
             uid: firebaseUser.uid,
@@ -335,18 +270,13 @@ export default function StudentApp() {
               firebaseUser.displayName ||
               (firebaseUser.email ? firebaseUser.email.split("@")[0] : "Aluno"),
             photoURL: firebaseUser.photoURL,
-            role: isAdminEmail ? "admin" : "student",
-            accessEnabled: true,
+            role: "student",
+            accessEnabled: false,
             courseAccess: {
               "rockwell-controle-analogico-supervisorio": false,
             },
-            enrolledCourses: [],
             createdAt: new Date().toISOString(),
           };
-
-          if (isAdminEmail) {
-            studentProfile.role = "admin";
-          }
 
           // Aluno Demonstração nunca possui papel de administrador
           if (isDemoUser(studentProfile)) {
@@ -367,8 +297,6 @@ export default function StudentApp() {
         } else {
           startTransition(() => {
             setUser(null);
-            setCoursesLoading(false);
-            setCoursesError(null);
           });
         }
         setAuthLoading(false);
@@ -381,18 +309,15 @@ export default function StudentApp() {
   // Recarrega todos os cursos após alterações administrativas
   const reloadAllCourses = async () => {
     setCoursesLoading(true);
-    setCoursesError(null);
     try {
-      const courses = await getAllCourses(user);
+      const courses = await getAllCourses();
       startTransition(() => {
         setAllCourses(courses);
         setCoursesLoading(false);
-        setCoursesError(null);
       });
-    } catch (e: any) {
+    } catch (e) {
       console.error("Erro ao recarregar cursos do Firestore:", e);
       setCoursesLoading(false);
-      setCoursesError(e?.message || "Erro ao recarregar cursos.");
     }
   };
 
@@ -408,10 +333,7 @@ export default function StudentApp() {
       displayName: "Aluno Demonstração",
       role: "student",
       accessEnabled: true,
-      courseAccess: {
-        "rockwell-controle-analogico-supervisorio": false,
-      },
-      enrolledCourses: [],
+      enrolledCourses: ["rockwell-basico"],
     };
 
     // Higieniza imediatamente cursos e aulas em memória, removendo URLs de vídeo
@@ -550,12 +472,6 @@ export default function StudentApp() {
 
   // Abre uma aula específica no reprodutor de vídeo
   const handleSelectLesson = (lesson: Lesson) => {
-    // Alunos sem acesso liberado às aulas são impedidos de abrir qualquer aula
-    if (!hasAccess && !isAdmin) {
-      showToast("Seu acesso às aulas ainda não foi liberado.");
-      return;
-    }
-
     if (isDemoUser(user)) {
       // Garante que o Aluno Demonstração nunca receba links de vídeo
       setSelectedLesson({
@@ -575,9 +491,10 @@ export default function StudentApp() {
   // =====================================================================
 
   // Validação estrita de administrador (Aluno Demonstração nunca é admin)
-  const isAdmin =
-    (user?.role === "admin" || user?.email?.toLowerCase() === "adm.vlautomacao@gmail.com") &&
-    !isDemoUser(user);
+  const isAdmin = useMemo(
+    () => user?.role === "admin" && !isDemoUser(user),
+    [user]
+  );
 
   // Lista dos cursos liberados para o aluno visualizar no menu e no dashboard
   const accessibleCourseIds = useMemo(
@@ -586,25 +503,25 @@ export default function StudentApp() {
   );
 
   const enrolledCoursesList = useMemo(() => {
-    const isUserAdmin =
-      (user?.role === "admin" || user?.email?.toLowerCase() === "adm.vlautomacao@gmail.com") &&
-      !isDemoUser(user);
-    if (isUserAdmin) return sanitizedCourses;
-    const filtered = sanitizedCourses.filter((c) => accessibleCourseIds.includes(c.id));
-    if (filtered.length > 0) return filtered;
-    // Para novos alunos que ainda não possuem cursos liberados em courseAccess,
-    // exibe o curso na área "Meus Cursos" para visualização do card com status de acesso pendente
-    return [course];
-  }, [user, sanitizedCourses, accessibleCourseIds, course]);
+    return isAdmin
+      ? sanitizedCourses
+      : sanitizedCourses.filter((c) => accessibleCourseIds.includes(c.id));
+  }, [isAdmin, sanitizedCourses, accessibleCourseIds]);
 
   // Valida se o aluno possui acesso ao curso ativo
-  const hasAccess = checkUserCourseAccess(user, course.id);
+  const hasAccess = useMemo(
+    () => checkUserCourseAccess(user, course.id),
+    [user, course.id]
+  );
 
   // Métricas do curso atual
   const lessons = course.lessons || [];
   const totalLessons = lessons.length;
   const completedCount = completedLessons.length;
-  const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+  const progressPercent = useMemo(
+    () => (totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0),
+    [totalLessons, completedCount]
+  );
 
   // =====================================================================
   // RENDERIZAÇÃO: TELAS ESPECIAIS (LOADING, LOGIN E BLOQUEIO)
@@ -728,7 +645,6 @@ export default function StudentApp() {
                 setCurrentTab("help");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              isLoadingCourses={coursesLoading}
             />
           )}
 
@@ -743,9 +659,6 @@ export default function StudentApp() {
               onToggleComplete={handleToggleLessonComplete}
               hasAccess={hasAccess}
               isLoadingCourses={coursesLoading}
-              accessibleCourseIds={accessibleCourseIds}
-              coursesError={coursesError}
-              onRetryCourses={reloadAllCourses}
             />
           )}
 
@@ -759,42 +672,19 @@ export default function StudentApp() {
 
           {/* 4. Reprodutor de Aulas e Atividades */}
           {currentTab === "lesson" && (
-            hasAccess || isAdmin ? (
-              <LessonPlayer
-                course={course}
-                currentLesson={currentLesson}
-                completedLessons={completedLessons}
-                completedForms={completedForms}
-                onToggleComplete={handleToggleLessonComplete}
-                onToggleFormComplete={handleToggleFormComplete}
-                onSelectLesson={handleSelectLesson}
-                onGoToCourse={() => setCurrentTab("course")}
-                user={user}
-                hasAccess={hasAccess}
-                onUpdateLessonVideoUrl={handleUpdateLessonVideoUrl}
-              />
-            ) : (
-              <div className="max-w-2xl mx-auto py-12 px-4 text-center">
-                <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-8 sm:p-12 shadow-xs space-y-4">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-100 dark:border-amber-900/50">
-                    <Lock className="w-6 h-6" />
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                    Seu acesso às aulas ainda não foi liberado.
-                  </h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                    Assim que o acesso for liberado pelo administrador, as aulas estarão disponíveis aqui.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentTab("course")}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-bold rounded-xl cursor-pointer"
-                  >
-                    <span>Voltar para Meus Cursos</span>
-                  </button>
-                </div>
-              </div>
-            )
+            <LessonPlayer
+              course={course}
+              currentLesson={currentLesson}
+              completedLessons={completedLessons}
+              completedForms={completedForms}
+              onToggleComplete={handleToggleLessonComplete}
+              onToggleFormComplete={handleToggleFormComplete}
+              onSelectLesson={handleSelectLesson}
+              onGoToCourse={() => setCurrentTab("course")}
+              user={user}
+              hasAccess={hasAccess}
+              onUpdateLessonVideoUrl={handleUpdateLessonVideoUrl}
+            />
           )}
 
           {/* 5. Acompanhamento de Progresso */}

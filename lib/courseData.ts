@@ -226,17 +226,13 @@ export function getVideoEmbedUrl(urlOrId?: string): string {
     return trimmed;
   }
 
-  // 2. Google Drive
-  if (trimmed.includes("drive.google.com/file/d/") && trimmed.includes("/preview")) {
-    return trimmed;
+  // 2. Google Drive: converte qualquer formato (/view, /preview, etc.) para a URL de incorporação canônica /preview
+  const driveFileMatch = trimmed.match(/(?:drive\.google\.com)?\/?file\/d\/([a-zA-Z0-9_-]+)/i);
+  if (driveFileMatch && driveFileMatch[1]) {
+    return `https://drive.google.com/file/d/${driveFileMatch[1]}/preview`;
   }
 
-  const fileMatch = trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (fileMatch && fileMatch[1]) {
-    return `https://drive.google.com/file/d/${fileMatch[1]}/preview`;
-  }
-
-  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/i);
   if (idParamMatch && idParamMatch[1]) {
     return `https://drive.google.com/file/d/${idParamMatch[1]}/preview`;
   }
